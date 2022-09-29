@@ -14,6 +14,8 @@ groupMembers={}
 groupEntitlements={}
 #print(res.status_code)
 resJson=res.json()
+folderList={}
+notebookList={}
 
 
 def getGroupList(resJson:json)->list:
@@ -306,7 +308,63 @@ def getDLTACL(workspace_url:str)-> dict:
 
         return dltPerm
     except Exception as e:
-        print(f'error in retriveing experiment permission: {e}')
+        print(f'error in retriveing dlt pipelines permission: {e}')
+
+def getFolderList(workspace_url:str, path:str)-> dict:
+    try:
+        data={'path':path}
+        resFolder=requests.get(f"{workspace_url}/api/2.0/workspace/list", headers=headers, data=json.dumps(data))
+        resFolderJson=resFolder.json()
+        folderPerm={}
+        if len(resFolderJson)==0:
+            return
+        for c in resFolderJson['objects']:
+            if c['object_type']=="DIRECTORY":
+                folderList[c['object_id']]=c['path']
+                getFolderList(workspace_url,c['path'])
+            elif c['object_type']=="NOTEBOOK":
+                notebookList[c['object_id']]=c['path']
+        
+        return 
+    except Exception as e:
+        print(f'error in retriving folder details: {e}')
+
+
+def getFoldersNotebookACL(workspace_url:str)-> list:
+    try:
+        getFolderList(workspace_url,"/Users")
+        folderPerm={}
+        notebookPerm={}
+        #print(notebookList)
+        for k,v in folderList.items():
+            resFolderPerm=requests.get(f"{workspace_url}/api/2.0/permissions/directories/{k}", headers=headers)
+            if resFolderPerm.status_code==404:
+                print(f'feature not enabled for this tier')
+                pass
+            resFolderPermJson=resFolderPerm.json()   
+            aclList=[]
+            for acl in resFolderPermJson['access_control_list']:
+                try:
+                    aclList.append(list([acl['group_name'],acl['all_permissions'][0]['permission_level'],acl['all_permissions'][0]['inherited']]))
+                except KeyError:
+                    continue
+            folderPerm[k]=aclList  
+        for k,v in notebookList.items():
+            resNotebookPerm=requests.get(f"{workspace_url}/api/2.0/permissions/notebooks/{k}", headers=headers)
+            if resNotebookPerm.status_code==404:
+                print(f'feature not enabled for this tier')
+                pass
+            resNotebookPermJson=resNotebookPerm.json()   
+            aclList=[]
+            for acl in resNotebookPermJson['access_control_list']:
+                try:
+                    aclList.append(list([acl['group_name'],acl['all_permissions'][0]['permission_level'],acl['all_permissions'][0]['inherited']]))
+                except KeyError:
+                    continue
+            notebookPerm[k]=aclList  
+        return folderPerm, notebookPerm
+    except Exception as e:
+        print(f'error in retriveing folder permission: {e}')
 #groupList=getGroupList(resJson)
 #groupMembers=getGroupMembers(resJson)
 #groupEntitlements=getGroupEntitlements(resJson)
@@ -329,3 +387,5 @@ def getDLTACL(workspace_url:str)-> dict:
 #print(modelPerm)
 #dltPerm=getDLTACL(workspace_url)
 #print(dltPerm)
+folderPerm, notebookPerm=getFoldersNotebookACL(workspace_url)
+[print(v) for k,v in notebookPerm.items()]
