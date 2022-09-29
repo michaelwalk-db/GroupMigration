@@ -164,7 +164,149 @@ def getPoolACL(workspace_url:str)-> dict:
             
         return instancePoolPerm
     except Exception as e:
-        print(f'error in retriveing warehouse permission: {e}')
+        print(f'error in retriveing Instance Pool permission: {e}')
+
+def getJobACL(workspace_url:str)-> dict:
+    try:
+        jobPerm={}
+        while True:
+            resJob=requests.get(f"{workspace_url}/api/2.1/jobs/list", headers=headers)
+            resJobJson=resJob.json()
+            if resJob.text=="{\"has_more\":false}":
+                print('No jobs available')
+                return {}
+            for c in resJobJson['jobs']:
+                jobID=c['job_id']
+                resJobPerm=requests.get(f"{workspace_url}/api/2.0/permissions/jobs/{jobID}", headers=headers)
+                if resJobPerm.status_code==404:
+                    print(f'feature not enabled for this tier')
+                    pass
+                resJobPermJson=resJobPerm.json()   
+                aclList=[]
+                
+                for acl in resJobPermJson['access_control_list']:
+                    try:
+                        aclList.append(list([acl['group_name'],acl['all_permissions'][0]['permission_level']]))
+                    except KeyError:
+                        continue
+
+                jobPerm[jobID]=aclList    
+            if resJobJson['has_more']==False:
+                break    
+        return jobPerm
+    except Exception as e:
+        print(f'error in retriveing job permission: {e}')
+def getExperimentACL(workspace_url:str)-> dict:
+    try:
+        nextPageToken=''
+        expPerm={}
+        while True:
+            data={}
+            if nextPageToken!="":    
+                data={'page_token':nextPageToken}
+            resExp=requests.get(f"{workspace_url}/api/2.0/mlflow/experiments/list", headers=headers,data=json.dumps(data))
+            resExpJson=resExp.json()
+            if len(resExpJson)==0:
+                print('No experiments available')
+                return {}
+            for c in resExpJson['experiments']:
+                expID=c['experiment_id']
+                resExpPerm=requests.get(f"{workspace_url}/api/2.0/permissions/experiments/{expID}", headers=headers)
+                if resExpPerm.status_code==404:
+                    print(f'feature not enabled for this tier')
+                    pass
+                resExpPermJson=resExpPerm.json()   
+                aclList=[]
+                
+                for acl in resExpPermJson['access_control_list']:
+                    try:
+                        aclList.append(list([acl['group_name'],acl['all_permissions'][0]['permission_level']]))
+                    except KeyError:
+                        continue
+                expPerm[expID]=aclList  
+            try:
+                nextPageToken=resExpJson['next_page_token']
+            except KeyError:
+                break
+
+        return expPerm
+    except Exception as e:
+        print(f'error in retriveing experiment permission: {e}')
+def getModelACL(workspace_url:str)-> dict:
+    try:
+        nextPageToken=''
+        expPerm={}
+        while True:    
+            data={}
+            if nextPageToken!="":    
+                data={'page_token':nextPageToken}    
+            resModel=requests.get(f"{workspace_url}/api/2.0/mlflow/registered-models/list", headers=headers,data=json.dumps(data))
+            resModelJson=resModel.json()
+            if len(resModelJson)==0:
+                print('No models available')
+                return {}
+            modelPerm={}
+            for c in resModelJson['registered_models']:
+                modelName=c['name']
+                param={'name':modelName}
+                modIDRes=requests.get(f"{workspace_url}/api/2.0/mlflow/databricks/registered-models/get", headers=headers, data=json.dumps(param))
+                modelID=modIDRes.json()['registered_model_databricks']['id']
+                resModelPerm=requests.get(f"{workspace_url}/api/2.0/permissions/registered-models/{modelID}", headers=headers)
+                if resModelPerm.status_code==404:
+                    print(f'feature not enabled for this tier')
+                    pass
+                resModelPermJson=resModelPerm.json()   
+                aclList=[]
+                
+                for acl in resModelPermJson['access_control_list']:
+                    try:
+                        aclList.append(list([acl['group_name'],acl['all_permissions'][0]['permission_level']]))
+                    except KeyError:
+                        continue
+                modelPerm[modelID]=aclList  
+            try:
+                nextPageToken=resModelJson['next_page_token']
+            except KeyError:
+                break
+        return modelPerm
+    except Exception as e:
+        print(f'error in retriveing model permission: {e}')
+def getDLTACL(workspace_url:str)-> dict:
+    try:
+        nextPageToken=''
+        dltPerm={}
+        while True:
+            data={}
+            if nextPageToken!="":    
+                data={'page_token':nextPageToken}
+            resDlt=requests.get(f"{workspace_url}/api/2.0/pipelines", headers=headers,data=json.dumps(data))
+            resDltJson=resDlt.json()
+            if len(resDltJson)==0:
+                print('No dlt pipelines available')
+                return {}
+            for c in resDltJson['statuses']:
+                dltID=c['pipeline_id']
+                resDltPerm=requests.get(f"{workspace_url}/api/2.0/permissions/pipelines/{dltID}", headers=headers)
+                if resDltPerm.status_code==404:
+                    print(f'feature not enabled for this tier')
+                    pass
+                resDltPermJson=resDltPerm.json()   
+                aclList=[]
+                
+                for acl in resDltPermJson['access_control_list']:
+                    try:
+                        aclList.append(list([acl['group_name'],acl['all_permissions'][0]['permission_level']]))
+                    except KeyError:
+                        continue
+                dltPerm[dltID]=aclList  
+            try:
+                nextPageToken=resDltJson['next_page_token']
+            except KeyError:
+                break
+
+        return dltPerm
+    except Exception as e:
+        print(f'error in retriveing experiment permission: {e}')
 #groupList=getGroupList(resJson)
 #groupMembers=getGroupMembers(resJson)
 #groupEntitlements=getGroupEntitlements(resJson)
@@ -179,3 +321,11 @@ def getPoolACL(workspace_url:str)-> dict:
 #print(warehousePerm)
 #instancePoolPerm=getPoolACL(workspace_url)
 #print(instancePoolPerm)
+#jobPerm=getJobACL(workspace_url)
+#print(jobPerm)
+#expPerm=getExperimentACL(workspace_url)
+#print(expPerm)
+#modelPerm=getModelACL(workspace_url)
+#print(modelPerm)
+#dltPerm=getDLTACL(workspace_url)
+#print(dltPerm)
