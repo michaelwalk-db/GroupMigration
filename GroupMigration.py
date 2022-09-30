@@ -365,9 +365,93 @@ def getFoldersNotebookACL(workspace_url:str)-> list:
         return folderPerm, notebookPerm
     except Exception as e:
         print(f'error in retriveing folder permission: {e}')
-#groupList=getGroupList(resJson)
-#groupMembers=getGroupMembers(resJson)
-#groupEntitlements=getGroupEntitlements(resJson)
+
+def getRepoACL(workspace_url:str)-> dict:
+    try:
+        nextPageToken=''
+        repoPerm={}
+        while True:
+            data={}
+            if nextPageToken!="":    
+                data={'page_token':nextPageToken}
+            resRepo=requests.get(f"{workspace_url}/api/2.0/repos", headers=headers,data=json.dumps(data))
+            resRepoJson=resRepo.json()
+            if len(resRepoJson)==0:
+                print('No repos available')
+                return {}
+            for c in resRepoJson['repos']:
+                repoID=c['id']
+                resRepoPerm=requests.get(f"{workspace_url}/api/2.0/permissions/repos/{repoID}", headers=headers)
+                if resRepoPerm.status_code==404:
+                    print(f'feature not enabled for this tier')
+                    pass
+                resRepoPermJson=resRepoPerm.json()   
+                aclList=[]
+                
+                for acl in resRepoPermJson['access_control_list']:
+                    try:
+                        aclList.append(list([acl['group_name'],acl['all_permissions'][0]['permission_level']]))
+                    except KeyError:
+                        continue
+                repoPerm[repoID]=aclList  
+            try:
+                nextPageToken=resRepoJson['next_page_token']
+            except KeyError:
+                break
+
+        return repoPerm
+    except Exception as e:
+        print(f'error in retriveing repos permission: {e}')
+def getTokenACL(workspace_url:str)-> dict:
+    try:
+        tokenPerm=[]
+        resTokenPerm=requests.get(f"{workspace_url}/api/2.0/preview/permissions/authorization/tokens", headers=headers)
+        if resTokenPerm.status_code==404:
+            print(f'feature not enabled for this tier')
+            pass
+        resTokenPermJson=resTokenPerm.json()   
+        aclList=[]     
+        for acl in resTokenPermJson['access_control_list']:
+            try:
+                tokenPerm.append(list([acl['group_name'],acl['all_permissions'][0]['permission_level']]))
+            except KeyError:
+                continue
+        return tokenPerm
+    except Exception as e:
+        print(f'error in retriveing Token permission: {e}')
+def getSecretScoppeACL(workspace_url:str)-> dict:
+    try:
+
+        resSScope=requests.get(f"{workspace_url}/api/2.0/secrets/scopes/list", headers=headers)
+        resSScopeJson=resSScope.json()
+        if len(resSScopeJson)==0:
+            print('No secret scopes defined.')
+            return {}
+        secretScopePerm={}
+        for c in resSScopeJson['scopes']:
+            scopeName=c['name']
+            data={'scope':scopeName}
+            resSSPerm=requests.get(f"{workspace_url}/api/2.0/secrets/acls/list/", headers=headers, data=json.dumps(data))
+            if resSSPerm.status_code==404:
+                print(f'feature not enabled for this tier')
+                pass
+            resSSPermJson=resSSPerm.json()   
+            aclList=[]
+            groupsL=[a[0] for a in groupList]
+            for acl in resSSPermJson['items']:
+                try:
+                    if acl['principal'] in groupsL:
+                        aclList.append(list([acl['principal'],acl['permission']]))
+                except KeyError:
+                    continue
+            secretScopePerm[scopeName]=aclList    
+
+        return secretScopePerm
+    except Exception as e:
+        print(f'error in retriving Secret Scope permission: {e}')
+groupList=getGroupList(resJson)
+groupMembers=getGroupMembers(resJson)
+groupEntitlements=getGroupEntitlements(resJson)
 #print(groupList)
 #print(groupMembers)
 #print(groupEntitlements)
@@ -387,5 +471,13 @@ def getFoldersNotebookACL(workspace_url:str)-> list:
 #print(modelPerm)
 #dltPerm=getDLTACL(workspace_url)
 #print(dltPerm)
-folderPerm, notebookPerm=getFoldersNotebookACL(workspace_url)
-[print(v) for k,v in notebookPerm.items()]
+#folderPerm, notebookPerm=getFoldersNotebookACL(workspace_url)
+#repoPerm=getRepoACL(workspace_url)
+#print(repoPerm)
+#tokenPerm=getTokenACL(workspace_url)
+#print(tokenPerm)
+#secretScopePerm=getSecretScoppeACL(workspace_url)
+#print(secretScopePerm)
+#data={'scope':'TestA', 'principal':'BusinessAnalyst', 'permission':'READ'}
+#resSSPerm=requests.post(f"{workspace_url}/api/2.0/secrets/acls/put", headers=headers, data=json.dumps(data))
+#print(resSSPerm.text)
