@@ -32,8 +32,11 @@ def getGroupMembers(resJson:json)->dict:
         groupMembers={}
         for e in resJson['Resources']:
             members=[]
-            for mem in e['members']:
-                members.append(list([mem['display'],mem['value']]))
+            try:
+                for mem in e['members']:
+                    members.append(list([mem['display'],mem['value']]))
+            except KeyError:
+                continue
             groupMembers[e['id']]=members
         return groupMembers
     except Exception as e:
@@ -71,13 +74,15 @@ def getClusterACL(workspace_url:str)-> dict:
             
             for acl in resCPermJson['access_control_list']:
                 try:
+                    if acl['all_permissions'][0]['inherited']==True:continue
                     aclList.append(list([acl['group_name'],acl['all_permissions'][0]['permission_level']]))
                 except KeyError:
                     continue
-
+            if len(aclList)==0:continue
             clusterPerm[clusterId]=aclList    
             
         return clusterPerm
+    
     except Exception as e:
         print(f'error in retriveing cluster permission: {e}')
 
@@ -452,11 +457,44 @@ def getSecretScoppeACL(workspace_url:str)-> dict:
 groupList=getGroupList(resJson)
 groupMembers=getGroupMembers(resJson)
 groupEntitlements=getGroupEntitlements(resJson)
+
+def updateGroupEntitlements(groupEntitlements:dict):
+    try:
+        
+        for group_id, etl in groupEntitlements.items():
+            entitlementList=[]
+            for e in etl:
+                entitlementList.append({"value":e})
+            entitlements = {
+                            "schemas": ["urn:ietf:params:scim:api:messages:2.0:PatchOp"],
+                            "Operations": [{"op": "add",
+                                        "path": "entitlements",
+                                        "value": entitlementList}]
+                        }
+            resPatch=requests.patch(f'{workspace_url}/api/2.0/preview/scim/v2/Groups/{group_id}', headers=headers, data=json.dumps(entitlements))
+    except Exception as e:
+        print(f'error applying entitiement for group id: {group_id}.')
+def updateGroupPermission(object:str, groupPermission : dict):
+    try:
+        #print(groupPermission)
+        for object_id,aclList in groupPermission.items(): 
+            print(object_id)           
+            dataAcl=[]
+            for  acl in aclList:
+                dataAcl.append({"group_name":acl[0],"permission_level":acl[1]})
+
+            data={"access_control_list":dataAcl}
+            resAppPerm=requests.patch(f"{workspace_url}/api/2.0/preview/permissions/{object}/{object_id}", headers=headers, data=json.dumps(data))
+            print(resAppPerm.text)
+            print(json.dumps(data))
+    except Exception as e:
+        print(f'Error setting permission for {object} {object_id}. {e} ')
+
 #print(groupList)
 #print(groupMembers)
 #print(groupEntitlements)
-#clusterPerm=getClusterACL(workspace_url)
-#print(clusterPerm)
+clusterPerm=getClusterACL(workspace_url)
+print(clusterPerm)
 #clusterPolicyPerm=getClusterPolicyACL(workspace_url)
 #print(clusterPolicyPerm)
 #warehousePerm=getWarehouseACL(workspace_url)
@@ -481,3 +519,5 @@ groupEntitlements=getGroupEntitlements(resJson)
 #data={'scope':'TestA', 'principal':'BusinessAnalyst', 'permission':'READ'}
 #resSSPerm=requests.post(f"{workspace_url}/api/2.0/secrets/acls/put", headers=headers, data=json.dumps(data))
 #print(resSSPerm.text)
+updateGroupEntitlements(groupEntitlements)
+#updateGroupPermission('clusters',clusterPerm)
