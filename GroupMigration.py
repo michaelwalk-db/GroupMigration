@@ -57,6 +57,16 @@ def getGroupEntitlements(resJson:json)->dict:
     except Exception as e:
         print(f'error in retriveing groupMembers : {e}')
 
+def getACL(acls:dict)->list:
+    aclList=[]
+    for acl in acls:
+        try:
+            if acl['all_permissions'][0]['inherited']==True:continue
+            aclList.append(list([acl['group_name'],acl['all_permissions'][0]['permission_level']]))
+        except KeyError:
+            continue
+    return aclList
+
 def getClusterACL(workspace_url:str)-> dict:
     try:
 
@@ -70,25 +80,15 @@ def getClusterACL(workspace_url:str)-> dict:
                 print(f'cluster ACL not enabled for the cluster: {clusterId}')
                 pass
             resCPermJson=resCPerm.json()            
-            aclList=[]
-            
-            for acl in resCPermJson['access_control_list']:
-                try:
-                    if acl['all_permissions'][0]['inherited']==True:continue
-                    aclList.append(list([acl['group_name'],acl['all_permissions'][0]['permission_level']]))
-                except KeyError:
-                    continue
+            aclList=getACL(resCPermJson['access_control_list'])
             if len(aclList)==0:continue
-            clusterPerm[clusterId]=aclList    
-            
-        return clusterPerm
-    
+            clusterPerm[clusterId]=aclList                
+        return clusterPerm    
     except Exception as e:
         print(f'error in retriveing cluster permission: {e}')
 
 def getClusterPolicyACL(workspace_url:str)-> dict:
     try:
-
         resCP=requests.get(f"{workspace_url}/api/2.0/policies/clusters/list", headers=headers)
         resCPJson=resCP.json()
         if resCPJson['total_count']==0:
@@ -102,22 +102,15 @@ def getClusterPolicyACL(workspace_url:str)-> dict:
                 print(f'cluster policy feature is not enabled for this tier.')
                 pass
             resCPPermJson=resCPPerm.json()            
-            aclList=[]
-            for acl in resCPPermJson['access_control_list']:
-                try:
-                    aclList.append(list([acl['group_name'],acl['all_permissions'][0]['permission_level']]))
-                except KeyError:
-                    continue
-
-            clusterPolicyPerm[policyid]=aclList    
-            
+            aclList=getACL(resCPPermJson['access_control_list'])
+            if len(aclList)==0:continue
+            clusterPolicyPerm[policyid]=aclList                
         return clusterPolicyPerm
     except Exception as e:
         print(f'error in retriveing cluster policy permission: {e}')
 
 def getWarehouseACL(workspace_url:str)-> dict:
     try:
-
         resW=requests.get(f"{workspace_url}/api/2.0/sql/warehouses", headers=headers)
         resWJson=resW.json()
         warehousePerm={}
@@ -127,25 +120,16 @@ def getWarehouseACL(workspace_url:str)-> dict:
             if resWPerm.status_code==404:
                 print(f'feature not enabled for this tier')
                 pass
-            resWPermJson=resWPerm.json()   
-         
-            aclList=[]
-            
-            for acl in resWPermJson['access_control_list']:
-                try:
-                    aclList.append(list([acl['group_name'],acl['all_permissions'][0]['permission_level']]))
-                except KeyError:
-                    continue
-
-            warehousePerm[warehouseId]=aclList    
-            
+            resWPermJson=resWPerm.json()            
+            aclList=getACL(resWPermJson['access_control_list'])                   
+            if len(aclList)==0:continue
+            warehousePerm[warehouseId]=aclList               
         return warehousePerm
     except Exception as e:
         print(f'error in retriveing warehouse permission: {e}')
 
 def getPoolACL(workspace_url:str)-> dict:
     try:
-
         resIP=requests.get(f"{workspace_url}/api/2.0/instance-pools/list", headers=headers)
         resIPJson=resIP.json()
         if len(resIPJson)==0:
@@ -159,16 +143,9 @@ def getPoolACL(workspace_url:str)-> dict:
                 print(f'feature not enabled for this tier')
                 pass
             resIPPermJson=resIPPerm.json()   
-            aclList=[]
-            
-            for acl in resIPPermJson['access_control_list']:
-                try:
-                    aclList.append(list([acl['group_name'],acl['all_permissions'][0]['permission_level']]))
-                except KeyError:
-                    continue
-
-            instancePoolPerm[instancePID]=aclList    
-            
+            aclList=getACL(resIPPermJson['access_control_list'])            
+            if len(aclList)==0:continue
+            instancePoolPerm[instancePID]=aclList                
         return instancePoolPerm
     except Exception as e:
         print(f'error in retriveing Instance Pool permission: {e}')
@@ -189,14 +166,8 @@ def getJobACL(workspace_url:str)-> dict:
                     print(f'feature not enabled for this tier')
                     pass
                 resJobPermJson=resJobPerm.json()   
-                aclList=[]
-                
-                for acl in resJobPermJson['access_control_list']:
-                    try:
-                        aclList.append(list([acl['group_name'],acl['all_permissions'][0]['permission_level']]))
-                    except KeyError:
-                        continue
-
+                aclList=getACL(resJobPermJson['access_control_list'])                
+                if len(aclList)==0:continue
                 jobPerm[jobID]=aclList    
             if resJobJson['has_more']==False:
                 break    
@@ -223,19 +194,13 @@ def getExperimentACL(workspace_url:str)-> dict:
                     print(f'feature not enabled for this tier')
                     pass
                 resExpPermJson=resExpPerm.json()   
-                aclList=[]
-                
-                for acl in resExpPermJson['access_control_list']:
-                    try:
-                        aclList.append(list([acl['group_name'],acl['all_permissions'][0]['permission_level']]))
-                    except KeyError:
-                        continue
+                aclList=getACL(resExpPermJson['access_control_list'])                
+                if len(aclList)==0:continue
                 expPerm[expID]=aclList  
             try:
                 nextPageToken=resExpJson['next_page_token']
             except KeyError:
                 break
-
         return expPerm
     except Exception as e:
         print(f'error in retriveing experiment permission: {e}')
@@ -263,13 +228,8 @@ def getModelACL(workspace_url:str)-> dict:
                     print(f'feature not enabled for this tier')
                     pass
                 resModelPermJson=resModelPerm.json()   
-                aclList=[]
-                
-                for acl in resModelPermJson['access_control_list']:
-                    try:
-                        aclList.append(list([acl['group_name'],acl['all_permissions'][0]['permission_level']]))
-                    except KeyError:
-                        continue
+                aclList=getACL(resModelPermJson['access_control_list'])                
+                if len(aclList)==0:continue
                 modelPerm[modelID]=aclList  
             try:
                 nextPageToken=resModelJson['next_page_token']
@@ -302,9 +262,11 @@ def getDLTACL(workspace_url:str)-> dict:
                 
                 for acl in resDltPermJson['access_control_list']:
                     try:
+                        if acl['all_permissions'][0]['inherited']==True:continue
                         aclList.append(list([acl['group_name'],acl['all_permissions'][0]['permission_level']]))
                     except KeyError:
                         continue
+                if len(aclList)==0:continue
                 dltPerm[dltID]=aclList  
             try:
                 nextPageToken=resDltJson['next_page_token']
@@ -347,12 +309,8 @@ def getFoldersNotebookACL(workspace_url:str)-> list:
                 print(f'feature not enabled for this tier')
                 pass
             resFolderPermJson=resFolderPerm.json()   
-            aclList=[]
-            for acl in resFolderPermJson['access_control_list']:
-                try:
-                    aclList.append(list([acl['group_name'],acl['all_permissions'][0]['permission_level'],acl['all_permissions'][0]['inherited']]))
-                except KeyError:
-                    continue
+            aclList=getACL(resFolderPermJson['access_control_list'])            
+            if len(aclList)==0:continue
             folderPerm[k]=aclList  
         for k,v in notebookList.items():
             resNotebookPerm=requests.get(f"{workspace_url}/api/2.0/permissions/notebooks/{k}", headers=headers)
@@ -360,12 +318,8 @@ def getFoldersNotebookACL(workspace_url:str)-> list:
                 print(f'feature not enabled for this tier')
                 pass
             resNotebookPermJson=resNotebookPerm.json()   
-            aclList=[]
-            for acl in resNotebookPermJson['access_control_list']:
-                try:
-                    aclList.append(list([acl['group_name'],acl['all_permissions'][0]['permission_level'],acl['all_permissions'][0]['inherited']]))
-                except KeyError:
-                    continue
+            aclList=getACL(resNotebookPermJson['access_control_list'])
+            if len(aclList)==0:continue
             notebookPerm[k]=aclList  
         return folderPerm, notebookPerm
     except Exception as e:
@@ -391,13 +345,8 @@ def getRepoACL(workspace_url:str)-> dict:
                     print(f'feature not enabled for this tier')
                     pass
                 resRepoPermJson=resRepoPerm.json()   
-                aclList=[]
-                
-                for acl in resRepoPermJson['access_control_list']:
-                    try:
-                        aclList.append(list([acl['group_name'],acl['all_permissions'][0]['permission_level']]))
-                    except KeyError:
-                        continue
+                aclList=getACL(resRepoPermJson['access_control_list'])
+                if len(aclList)==0:continue
                 repoPerm[repoID]=aclList  
             try:
                 nextPageToken=resRepoJson['next_page_token']
@@ -409,7 +358,7 @@ def getRepoACL(workspace_url:str)-> dict:
         print(f'error in retriveing repos permission: {e}')
 def getTokenACL(workspace_url:str)-> dict:
     try:
-        tokenPerm=[]
+        tokenPerm={}
         resTokenPerm=requests.get(f"{workspace_url}/api/2.0/preview/permissions/authorization/tokens", headers=headers)
         if resTokenPerm.status_code==404:
             print(f'feature not enabled for this tier')
@@ -418,9 +367,11 @@ def getTokenACL(workspace_url:str)-> dict:
         aclList=[]     
         for acl in resTokenPermJson['access_control_list']:
             try:
-                tokenPerm.append(list([acl['group_name'],acl['all_permissions'][0]['permission_level']]))
+                if acl['all_permissions'][0]['inherited']==True:continue
+                aclList.append(list([acl['group_name'],acl['all_permissions'][0]['permission_level']]))
             except KeyError:
                 continue
+        tokenPerm['tokens']=aclList  
         return tokenPerm
     except Exception as e:
         print(f'error in retriveing Token permission: {e}')
@@ -476,25 +427,29 @@ def updateGroupEntitlements(groupEntitlements:dict):
         print(f'error applying entitiement for group id: {group_id}.')
 def updateGroupPermission(object:str, groupPermission : dict):
     try:
-        #print(groupPermission)
         for object_id,aclList in groupPermission.items(): 
-            print(object_id)           
             dataAcl=[]
             for  acl in aclList:
                 dataAcl.append({"group_name":acl[0],"permission_level":acl[1]})
-
             data={"access_control_list":dataAcl}
             resAppPerm=requests.patch(f"{workspace_url}/api/2.0/preview/permissions/{object}/{object_id}", headers=headers, data=json.dumps(data))
-            print(resAppPerm.text)
-            print(json.dumps(data))
     except Exception as e:
         print(f'Error setting permission for {object} {object_id}. {e} ')
+def updateSecretPermission(secretPermission : dict):
+    try:
+        for object_id,aclList in secretPermission.items(): 
+            dataAcl=[]
+            for  acl in aclList:
+                data={"scope":object_id, "principal":acl[0], "permission":acl[1]}
+                resAppPerm=requests.post(f"{workspace_url}/api/2.0/secrets/acls/put", headers=headers, data=json.dumps(data))
+    except Exception as e:
+        print(f'Error setting permission for scope {object_id}. {e} ')
 
 #print(groupList)
 #print(groupMembers)
 #print(groupEntitlements)
-clusterPerm=getClusterACL(workspace_url)
-print(clusterPerm)
+#clusterPerm=getClusterACL(workspace_url)
+#print(clusterPerm)
 #clusterPolicyPerm=getClusterPolicyACL(workspace_url)
 #print(clusterPolicyPerm)
 #warehousePerm=getWarehouseACL(workspace_url)
@@ -509,15 +464,32 @@ print(clusterPerm)
 #print(modelPerm)
 #dltPerm=getDLTACL(workspace_url)
 #print(dltPerm)
-#folderPerm, notebookPerm=getFoldersNotebookACL(workspace_url)
-#repoPerm=getRepoACL(workspace_url)
-#print(repoPerm)
-#tokenPerm=getTokenACL(workspace_url)
-#print(tokenPerm)
+folderPerm, notebookPerm=getFoldersNotebookACL(workspace_url)
+print(folderPerm)
+print('notebook')
+print(notebookPerm)
+repoPerm=getRepoACL(workspace_url)
+print(repoPerm)
+tokenPerm=getTokenACL(workspace_url)
+print(tokenPerm)
 #secretScopePerm=getSecretScoppeACL(workspace_url)
 #print(secretScopePerm)
 #data={'scope':'TestA', 'principal':'BusinessAnalyst', 'permission':'READ'}
 #resSSPerm=requests.post(f"{workspace_url}/api/2.0/secrets/acls/put", headers=headers, data=json.dumps(data))
 #print(resSSPerm.text)
-updateGroupEntitlements(groupEntitlements)
+#updateGroupEntitlements(groupEntitlements)
 #updateGroupPermission('clusters',clusterPerm)
+#updateGroupPermission('cluster-policies',clusterPolicyPerm)
+#updateGroupPermission('sql/warehouses',warehousePerm)
+#updateGroupPermission('instance-pools',instancePoolPerm)
+#updateGroupPermission('jobs',jobPerm)
+#updateGroupPermission('experiments',expPerm)
+#updateGroupPermission('registered-models',modelPerm)
+#updateGroupPermission('pipelines',dltPerm)
+#updateGroupPermission('directories',folderPerm)
+
+#updateGroupPermission('notebooks',notebookPerm)
+
+#updateGroupPermission('repos',repoPerm)
+#updateGroupPermission('authorization',tokenPerm)
+#updateSecretPermission(secretScopePerm)
