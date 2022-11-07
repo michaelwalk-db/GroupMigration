@@ -1,10 +1,11 @@
 from os import getgrouplist
 import requests
-import json
+import json, math
 
-workspace_url = 'https://adb-984752964297111.11.azuredatabricks.net'
+workspace_url = 'https://e2-demo-field-eng.cloud.databricks.com'
 workspace_url = 'https://adb-5932067186463130.10.azuredatabricks.net'
-token='dapi5528d3a905ef8b2a6f9d186bb1ff8c52'
+
+token='dapi9f43cfa7187dd43d52a3f5d515436cdb'
 token='dapi61015f016e07c4f4628f0b3cabab22ca'
 headers={'Authorization': 'Bearer %s' % token}
 res=requests.get(f"{workspace_url}/api/2.0/preview/scim/v2/Groups", headers=headers)
@@ -12,7 +13,7 @@ res=requests.get(f"{workspace_url}/api/2.0/preview/scim/v2/Groups", headers=head
 groupList=[]
 groupMembers={}
 groupEntitlements={}
-#print(res.status_code)
+groupRoles={}
 resJson=res.json()
 folderList={}
 notebookList={}
@@ -55,7 +56,23 @@ def getGroupEntitlements(resJson:json)->dict:
             groupEntitlements[e['id']]=entms
         return groupEntitlements
     except Exception as e:
-        print(f'error in retriveing groupMembers : {e}')
+        print(f'error in retriveing group entitlements : {e}')
+
+def getGroupRoles(resJson:json)->dict:
+    try:
+        groupRoles={}
+        for e in resJson['Resources']:
+            entms=[]
+            try:
+                for ent in e['roles']:
+                    entms.append(ent['value'])
+            except:
+                pass
+            if len(entms)==0:continue
+            groupRoles[e['id']]=entms
+        return groupRoles
+    except Exception as e:
+        print(f'error in retriveing group roles : {e}')
 
 def getACL(acls:dict)->list:
     aclList=[]
@@ -66,6 +83,7 @@ def getACL(acls:dict)->list:
         except KeyError:
             continue
     return aclList
+
 
 def getClusterACL(workspace_url:str)-> dict:
     try:
@@ -127,6 +145,85 @@ def getWarehouseACL(workspace_url:str)-> dict:
         return warehousePerm
     except Exception as e:
         print(f'error in retriveing warehouse permission: {e}')
+
+def getDashboardACL(workspace_url:str)-> dict:
+    try:
+        resD=requests.get(f"{workspace_url}/api/2.0/preview/sql/dashboards", headers=headers)
+        resDJson=resD.json()
+        pages=math.ceil(resDJson['count']/resDJson['page_size'])
+        dashboardPerm={}
+        for pg in range(1,pages+1):
+            resD=requests.get(f"{workspace_url}/api/2.0/preview/sql/dashboards?page={str(pg)}", headers=headers)
+            resDJson=resD.json()            
+            for c in resDJson['results']:
+                dashboardId=c['id']
+                resDPerm=requests.get(f"{workspace_url}/api/2.0/preview/sql/permissions/dashboards/{dashboardId}", headers=headers)
+                if resDPerm.status_code==404:
+                    print(f'feature not enabled for this tier')
+                    pass
+                resDPermJson=resDPerm.json() 
+                aclList=resDPermJson['access_control_list']        
+                if len(aclList)==0:continue
+                dashboardPerm[dashboardId]=aclList               
+        return dashboardPerm
+        
+    except Exception as e:
+        print(f'error in retriveing dashboard permission: {e}')
+def getQueriesACL(workspace_url:str)-> dict:
+    try:
+        resQ=requests.get(f"{workspace_url}/api/2.0/preview/sql/queries", headers=headers)
+        resQJson=resQ.json()
+        queryPerm={}
+        pages=math.ceil(resQJson['count']/resQJson['page_size'])
+        for pg in range(1,pages+1):
+            resQ=requests.get(f"{workspace_url}/api/2.0/preview/sql/queries?page={str(pg)}", headers=headers)
+            resQJson=resQ.json()            
+            for c in resQJson['results']:
+                queryId=c['id']
+                resQPerm=requests.get(f"{workspace_url}/api/2.0/preview/sql/permissions/queries/{queryId}", headers=headers)
+                if resQPerm.status_code==404:
+                    print(f'feature not enabled for this tier')
+                    pass
+                resQPermJson=resQPerm.json() 
+                aclList=resQPermJson['access_control_list']                  
+                if len(aclList)==0:continue
+                queryPerm[queryId]=aclList               
+        return queryPerm
+        
+    except Exception as e:
+        print(f'error in retriveing query permission: {e}')
+def getAlertsACL(workspace_url:str)-> dict:
+    try:
+        resA=requests.get(f"{workspace_url}/api/2.0/preview/sql/alerts", headers=headers)
+        resAJson=resA.json()
+        alertPerm={}
+        for c in resAJson:
+            alertId=c['id']
+            resAPerm=requests.get(f"{workspace_url}/api/2.0/preview/sql/permissions/alerts/{alertId}", headers=headers)
+            if resAPerm.status_code==404:
+                print(f'feature not enabled for this tier')
+                pass
+            resAPermJson=resAPerm.json() 
+            aclList=resAPermJson['access_control_list']                 
+            if len(aclList)==0:continue
+            alertPerm[alertId]=aclList               
+        return alertPerm
+        
+    except Exception as e:
+        print(f'error in retriveing alerts permission: {e}')
+
+def getPasswordACL(workspace_url:str)-> dict:
+    try:
+        resP=requests.get(f"{workspace_url}/api/2.0/preview/permissions/authorization/passwords", headers=headers)
+        resPJson=resP.json()
+        if len(resPJson)==0:
+            print('No password acls defined.')
+            return {}
+        passwordPerm={}
+        passwordPerm['passwords']=getACL(resPJson['access_control_list'])            
+        return passwordPerm
+    except Exception as e:
+        print(f'error in retriveing password  permission: {e}')
 
 def getPoolACL(workspace_url:str)-> dict:
     try:
@@ -258,14 +355,7 @@ def getDLTACL(workspace_url:str)-> dict:
                     print(f'feature not enabled for this tier')
                     pass
                 resDltPermJson=resDltPerm.json()   
-                aclList=[]
-                
-                for acl in resDltPermJson['access_control_list']:
-                    try:
-                        if acl['all_permissions'][0]['inherited']==True:continue
-                        aclList.append(list([acl['group_name'],acl['all_permissions'][0]['permission_level']]))
-                    except KeyError:
-                        continue
+                aclList=getACL(resDltPermJson['access_control_list'])
                 if len(aclList)==0:continue
                 dltPerm[dltID]=aclList  
             try:
@@ -405,9 +495,9 @@ def getSecretScoppeACL(workspace_url:str)-> dict:
         return secretScopePerm
     except Exception as e:
         print(f'error in retriving Secret Scope permission: {e}')
-groupList=getGroupList(resJson)
-groupMembers=getGroupMembers(resJson)
-groupEntitlements=getGroupEntitlements(resJson)
+#groupList=getGroupList(resJson)
+#groupMembers=getGroupMembers(resJson)
+#groupEntitlements=getGroupEntitlements(resJson)
 
 def updateGroupEntitlements(groupEntitlements:dict):
     try:
@@ -425,6 +515,24 @@ def updateGroupEntitlements(groupEntitlements:dict):
             resPatch=requests.patch(f'{workspace_url}/api/2.0/preview/scim/v2/Groups/{group_id}', headers=headers, data=json.dumps(entitlements))
     except Exception as e:
         print(f'error applying entitiement for group id: {group_id}.')
+
+def updateGroupRoles(groupRoles:dict):
+    try:
+        
+        for group_id, roles in groupRoles.items():
+            roleList=[]
+            for e in roles:
+                roleList.append({"value":e})
+            instanceProfileRoles = {
+                            "schemas": ["urn:ietf:params:scim:api:messages:2.0:PatchOp"],
+                            "Operations": [{"op": "add",
+                                        "path": "roles",
+                                        "value": roleList}]
+                        }
+            resPatch=requests.patch(f'{workspace_url}/api/2.0/preview/scim/v2/Groups/{group_id}', headers=headers, data=json.dumps(instanceProfileRoles))
+    except Exception as e:
+        print(f'error applying role for group id: {group_id}.')
+
 def updateGroupPermission(object:str, groupPermission : dict):
     try:
         for object_id,aclList in groupPermission.items(): 
@@ -433,6 +541,14 @@ def updateGroupPermission(object:str, groupPermission : dict):
                 dataAcl.append({"group_name":acl[0],"permission_level":acl[1]})
             data={"access_control_list":dataAcl}
             resAppPerm=requests.patch(f"{workspace_url}/api/2.0/preview/permissions/{object}/{object_id}", headers=headers, data=json.dumps(data))
+    except Exception as e:
+        print(f'Error setting permission for {object} {object_id}. {e} ')
+def updateGroup2Permission(object:str, groupPermission : dict):
+    try:
+        for object_id,aclList in groupPermission.items(): 
+            dataAcl=[]
+            data={"access_control_list":aclList}
+            resAppPerm=requests.post(f"{workspace_url}/api/2.0/preview/sql/permissions/{object}/{object_id}", headers=headers, data=json.dumps(data))
     except Exception as e:
         print(f'Error setting permission for {object} {object_id}. {e} ')
 def updateSecretPermission(secretPermission : dict):
@@ -448,12 +564,23 @@ def updateSecretPermission(secretPermission : dict):
 #print(groupList)
 #print(groupMembers)
 #print(groupEntitlements)
+#groupRoles=getGroupRoles(resJson)
+#print(groupRoles)
+#passwordPerm= getPasswordACL(workspace_url)
+#print(passwordPerm)
+
 #clusterPerm=getClusterACL(workspace_url)
 #print(clusterPerm)
 #clusterPolicyPerm=getClusterPolicyACL(workspace_url)
 #print(clusterPolicyPerm)
 #warehousePerm=getWarehouseACL(workspace_url)
 #print(warehousePerm)
+#dashboardPerm=getDashboardACL(workspace_url)
+#print(dashboardPerm)
+#queryPerm=getQueriesACL(workspace_url)
+#print(queryPerm)
+#alertPerm=getAlertsACL(workspace_url)
+#print(alertPerm)
 #instancePoolPerm=getPoolACL(workspace_url)
 #print(instancePoolPerm)
 #jobPerm=getJobACL(workspace_url)
@@ -493,3 +620,5 @@ def updateSecretPermission(secretPermission : dict):
 #updateGroupPermission('repos',repoPerm)
 #updateGroupPermission('authorization',tokenPerm)
 #updateSecretPermission(secretScopePerm)
+#updateGroup2Permission('dashboards',dashboardPerm)
+#updateGroupPermission('authorization',passwordPerm)
