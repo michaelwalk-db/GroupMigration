@@ -694,4 +694,19 @@ def getDataObjectsACL(workspace_url:str)-> list:
 
 # COMMAND ----------
 
+def updateDataObjectsPermission(aclList : list):
+    try:
+        for acl in aclList: 
+          aclQuery = "GRANT {} ON {} {} TO `{}`".format(acl.ActionType, acl.ObjectType, acl.ObjectKey, acl.Principal)
+          print(aclQuery)
+          spark.sql(aclQuery)
+    except Exception as e:
+        print(f'Error setting permission, {e} ')
+
+# COMMAND ----------
+
+updateDataObjectsPermission(aclFinalList)
+
+# COMMAND ----------
+
 
