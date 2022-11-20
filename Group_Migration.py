@@ -14,9 +14,12 @@ token='dapi61015f016e07c4f4628f0b3cabab22ca'
 headers={'Authorization': 'Bearer %s' % token}
 res=requests.get(f"{workspace_url}/api/2.0/preview/scim/v2/Groups", headers=headers)
 #res=requests.get(f"{workspace_url}/api/2.0/clusters/list", headers=headers)
-groupList=[]
+groupList={}
+groupWSGList={}
 groupMembers={}
 groupEntitlements={}
+groupNameDict={}
+groupWSGNameDict={}
 groupRoles={}
 resJson=res.json()
 folderList={}
@@ -27,10 +30,12 @@ notebookList={}
 
 
 
-def getGroupList(resJson:json)->list:
+def getGroupList(resJson:json, groupL:list)->list:
     try:
         for e in resJson['Resources']:
-            groupList.append(list([e['displayName'],e['id']]))
+            #groupList.append(list([e['displayName'],e['id']]))
+            if e['displayName'] in groupL:
+              groupList[e['id']]=e['displayName']
 
         return groupList
     except Exception as e:
@@ -46,7 +51,8 @@ def getGroupMembers(resJson:json)->dict:
                     members.append(list([mem['display'],mem['value']]))
             except KeyError:
                 continue
-            groupMembers[e['id']]=members
+            if e['id'] in groupList:
+              groupMembers[e['id']]=members
         return groupMembers
     except Exception as e:
         print(f'error in retriveing groupMembers : {e}')
@@ -61,7 +67,9 @@ def getGroupEntitlements(resJson:json)->dict:
                     entms.append(ent['value'])
             except:
                 pass
-            groupEntitlements[e['id']]=entms
+            if e['id'] in groupList:
+              groupEntitlements[e['id']]=entms
+        
         return groupEntitlements
     except Exception as e:
         print(f'error in retriveing group entitlements : {e}')
@@ -77,7 +85,8 @@ def getGroupRoles(resJson:json)->dict:
             except:
                 pass
             if len(entms)==0:continue
-            groupRoles[e['id']]=entms
+            if e['id'] in groupList:
+              groupRoles[e['id']]=entms
         return groupRoles
     except Exception as e:
         print(f'error in retriveing group roles : {e}')
@@ -90,6 +99,7 @@ def getACL(acls:dict)->list:
             aclList.append(list([acl['group_name'],acl['all_permissions'][0]['permission_level']]))
         except KeyError:
             continue
+    aclList=[acl for acl in aclList if acl[0] in groupNames]
     return aclList
 
 
@@ -172,6 +182,7 @@ def getDashboardACL(workspace_url:str)-> dict:
                 resDPermJson=resDPerm.json() 
                 aclList=resDPermJson['access_control_list']        
                 if len(aclList)==0:continue
+                aclList=[acl for acl in aclList if acl[0] in groupNames]
                 dashboardPerm[dashboardId]=aclList               
         return dashboardPerm
         
@@ -195,6 +206,7 @@ def getQueriesACL(workspace_url:str)-> dict:
                 resQPermJson=resQPerm.json() 
                 aclList=resQPermJson['access_control_list']                  
                 if len(aclList)==0:continue
+                aclList=[acl for acl in aclList if acl[0] in groupNames]
                 queryPerm[queryId]=aclList               
         return queryPerm
         
@@ -214,6 +226,7 @@ def getAlertsACL(workspace_url:str)-> dict:
             resAPermJson=resAPerm.json() 
             aclList=resAPermJson['access_control_list']                 
             if len(aclList)==0:continue
+            aclList=[acl for acl in aclList if acl[0] in groupNames]
             alertPerm[alertId]=aclList               
         return alertPerm
         
@@ -469,6 +482,7 @@ def getTokenACL(workspace_url:str)-> dict:
                 aclList.append(list([acl['group_name'],acl['all_permissions'][0]['permission_level']]))
             except KeyError:
                 continue
+        aclList=[acl for acl in aclList if acl[0] in groupNames]
         tokenPerm['tokens']=aclList  
         return tokenPerm
     except Exception as e:
@@ -491,10 +505,10 @@ def getSecretScoppeACL(workspace_url:str)-> dict:
                 pass
             resSSPermJson=resSSPerm.json()   
             aclList=[]
-            groupsL=[a[0] for a in groupList]
+            
             for acl in resSSPermJson['items']:
                 try:
-                    if acl['principal'] in groupsL:
+                    if acl['principal'] in groupNames:
                         aclList.append(list([acl['principal'],acl['permission']]))
                 except KeyError:
                     continue
@@ -505,11 +519,14 @@ def getSecretScoppeACL(workspace_url:str)-> dict:
         print(f'error in retriving Secret Scope permission: {e}')
 
 
-def updateGroupEntitlements(groupEntitlements:dict):
+def updateGroupEntitlements(groupEntitlements:dict, level:str):
     try:
-        
         for group_id, etl in groupEntitlements.items():
             entitlementList=[]
+            if level=="Workspace":
+              groupId=groupWSGNameDict[groupList[group_id]]
+            else:
+              groupId=groupWSGNameDict[groupList[group_id]]
             for e in etl:
                 entitlementList.append({"value":e})
             entitlements = {
@@ -522,11 +539,15 @@ def updateGroupEntitlements(groupEntitlements:dict):
     except Exception as e:
         print(f'error applying entitiement for group id: {group_id}.')
 
-def updateGroupRoles(groupRoles:dict):
+def updateGroupRoles(groupRoles:dict, level:str):
     try:
         
         for group_id, roles in groupRoles.items():
             roleList=[]
+            if level=="Workspace":
+              groupId=groupWSGNameDict[groupList[group_id]]
+            else:
+              groupId=groupWSGNameDict[groupList[group_id]]
             for e in roles:
                 roleList.append({"value":e})
             instanceProfileRoles = {
@@ -539,22 +560,29 @@ def updateGroupRoles(groupRoles:dict):
     except Exception as e:
         print(f'error applying role for group id: {group_id}.')
 
-def updateGroupPermission(object:str, groupPermission : dict):
+def updateGroupPermission(object:str, groupPermission : dict, level:str):
     try:
-        for object_id,aclList in groupPermission.items(): 
-            dataAcl=[]
-            for  acl in aclList:
-                dataAcl.append({"group_name":acl[0],"permission_level":acl[1]})
-            data={"access_control_list":dataAcl}
-            resAppPerm=requests.patch(f"{workspace_url}/api/2.0/preview/permissions/{object}/{object_id}", headers=headers, data=json.dumps(data))
+      suffix=""
+      if level="Workspace":suffix="_WSG"
+
+      for object_id,aclList in groupPermission.items(): 
+          dataAcl=[]
+          for  acl in aclList:
+              dataAcl.append({"group_name":acl[0]+suffix,"permission_level":acl[1]})
+          data={"access_control_list":dataAcl}
+          resAppPerm=requests.patch(f"{workspace_url}/api/2.0/preview/permissions/{object}/{object_id}", headers=headers, data=json.dumps(data))
     except Exception as e:
         print(f'Error setting permission for {object} {object_id}. {e} ')
-def updateGroup2Permission(object:str, groupPermission : dict):
+def updateGroup2Permission(object:str, groupPermission : dict, level:str):
     try:
-        for object_id,aclList in groupPermission.items(): 
-            dataAcl=[]
-            data={"access_control_list":aclList}
-            resAppPerm=requests.post(f"{workspace_url}/api/2.0/preview/sql/permissions/{object}/{object_id}", headers=headers, data=json.dumps(data))
+      suffix=""
+      if level="Workspace":suffix="_WSG"
+
+      for object_id,aclList in groupPermission.items(): 
+          dataAcl=[]
+          aclList=[[acl[0]+suffix,acl[1]] for acl in aclList]
+          data={"access_control_list":aclList}
+          resAppPerm=requests.post(f"{workspace_url}/api/2.0/preview/sql/permissions/{object}/{object_id}", headers=headers, data=json.dumps(data))
     except Exception as e:
         print(f'Error setting permission for {object} {object_id}. {e} ')
 def updateSecretPermission(secretPermission : dict):
@@ -566,6 +594,214 @@ def updateSecretPermission(secretPermission : dict):
                 resAppPerm=requests.post(f"{workspace_url}/api/2.0/secrets/acls/put", headers=headers, data=json.dumps(data))
     except Exception as e:
         print(f'Error setting permission for scope {object_id}. {e} ')
+
+
+
+# COMMAND ----------
+
+def getDataObjectsACL(workspace_url:str)-> list:
+  dbs = spark.sql("show databases")
+  aclList = []
+
+  for db in dbs.collect():
+    databaseName = ""
+
+    databaseName = db.databaseName
+    databaseName = 'default'
+
+    # append the database df to the list
+    df=(spark.sql("SHOW GRANT ON DATABASE {}".format(databaseName))
+                   .withColumn("ObjectKey", lit(databaseName))
+                   .withColumn("ObjectType", lit("DATABASE"))
+                   .filter(col("ActionType")!="OWN")
+       )
+    aclList=df.collect()
+    tables = spark.sql("show tables in {}".format(databaseName)).filter(col("isTemporary") == False)
+    for table in tables.collect():
+      dft=(spark.sql("show grant on table {}.{}".format(table.database, table.tableName))
+                     .withColumn("ObjectKey", lit("`" + table.database + "`.`" + table.tableName + "`"))
+                     .withColumn("ObjectType", lit("TABLE"))
+                    )
+      aclList+=dft.collect()
+      break
+
+    views = spark.sql("show views in {}".format(databaseName)).filter(col("isTemporary") == False)
+    for view in views.collect():
+      dft=(spark.sql("show grant on view {}.{}".format(view.namespace, view.viewName))
+                     .withColumn("ObjectKey", lit("`" + view.namespace + "`.`" + view.viewName + "`"))
+                     .withColumn("ObjectType", lit("VIEW"))
+                    )
+      aclList+=dft.collect()
+      break
+
+    functions = spark.sql("show functions in {}".format(databaseName)).filter(col("function").startswith(databaseName+"."))
+    for function in functions.collect():
+      dft=(spark.sql("show grant on function {}".format( function.function))
+                     .withColumn("ObjectKey", lit("`" + function.function + "`"))
+                     .withColumn("ObjectType", lit("FUNCTION"))
+                    )
+      aclList+=dft.collect()
+      break
+
+
+    break
+  dft=(spark.sql("show grant on any file ")
+                 .withColumn("ObjectKey", lit("ANY FILE"))
+                 .withColumn("ObjectType", lit("ANY_FILE"))
+                )
+  aclList+=dft.collect()
+  aclFinalList=[acl for acl in aclList if acl[0] in groupNames]
+
+  return aclFinalList
+
+
+# COMMAND ----------
+
+def updateDataObjectsPermission(aclList : list, level:str):
+    try:
+      suffix=""
+      if level="Workspace":suffix="_WSG"
+        for acl in aclList: 
+          aclQuery = "GRANT {} ON {} {} TO `{}`".format(acl.ActionType, acl.ObjectType, acl.ObjectKey, acl.Principal+suffix)
+          print(aclQuery)
+          spark.sql(aclQuery)
+    except Exception as e:
+        print(f'Error setting permission, {e} ')
+
+# COMMAND ----------
+
+def performInventory(workspace_url:str, groupL:list):
+  try:
+    res=requests.get(f"{workspace_url}/api/2.0/preview/scim/v2/Groups", headers=headers)
+
+    groupList=getGroupList(resJson, groupL)
+    groupMembers=getGroupMembers(resJson)
+    groupEntitlements=getGroupEntitlements(resJson)
+    groupNames=[v for k,v in groupList.items()]
+    for k,v in groupList.items():
+      groupNameDict[v]=k    
+    groupRoles=getGroupRoles(resJson)
+    passwordPerm= getPasswordACL(workspace_url)
+    clusterPerm=getClusterACL(workspace_url)
+    clusterPolicyPerm=getClusterPolicyACL(workspace_url)
+    warehousePerm=getWarehouseACL(workspace_url)
+    dashboardPerm=getDashboardACL(workspace_url)
+    queryPerm=getQueriesACL(workspace_url)
+    alertPerm=getAlertsACL(workspace_url)
+    instancePoolPerm=getPoolACL(workspace_url)
+    jobPerm=getJobACL(workspace_url)
+    expPerm=getExperimentACL(workspace_url)
+    modelPerm=getModelACL(workspace_url)
+    dltPerm=getDLTACL(workspace_url)
+    folderPerm, notebookPerm=getFoldersNotebookACL(workspace_url)
+    repoPerm=getRepoACL(workspace_url)
+    tokenPerm=getTokenACL(workspace_url)
+    secretScopePerm=getSecretScoppeACL(workspace_url)
+    tableACLList=getDataObjectsACL(workspace_url)
+    
+  except Exception as e:
+    print(f' Error creating group inventory, {e})
+
+# COMMAND ----------
+
+def applyGroupPermission(workspace_url:str, groupList:list, level:str ):
+  try:
+    updateGroupEntitlements(groupEntitlements,level)
+    updateGroupPermission('clusters',clusterPerm,level)
+    updateGroupPermission('cluster-policies',clusterPolicyPerm,level)
+    updateGroupPermission('sql/warehouses',warehousePerm,level)
+    updateGroupPermission('instance-pools',instancePoolPerm,level)
+    updateGroupPermission('jobs',jobPerm,level)
+    updateGroupPermission('experiments',expPerm,level)
+    updateGroupPermission('registered-models',modelPerm,level)
+    updateGroupPermission('pipelines',dltPerm,level)
+    updateGroupPermission('directories',folderPerm,level)
+
+    updateGroupPermission('notebooks',notebookPerm,level)
+
+    updateGroupPermission('repos',repoPerm,level)
+    updateGroupPermission('authorization',tokenPerm,level)
+    updateSecretPermission(secretScopePerm,level)
+    updateGroup2Permission('dashboards',dashboardPerm,level)
+    updateGroup2Permission('queries',queryPerm,level)
+    updateGroup2Permission('alerts',alertPerm,level)
+    updateGroupPermission('authorization',passwordPerm,level)
+    updateDataObjectsPermission(tableACLList,groupRoles,level)
+    updateGroupRoles(level)
+  except Exception as e:
+    print(f' Error applying group permission, {e})
+          
+
+# COMMAND ----------
+
+def deleteGroups(workspace_url:str, groupL:List, mode:str):
+  try:
+    for g in groupL:
+      if mode=="Original":
+        gID=groupNameDict[g]
+      else:
+        gID=groupNameDict[g]
+      res=requests.delete(f"{workspace_url}/api/2.0/preview/scim/v2/Groups/"+groupNameDict[g], headers=headers, json.dumps(data))
+  except Exception as e:
+    print(f' Error deleting groups , {e})
+
+# COMMAND ----------
+
+def createBackupGroup(groupL : list):
+  try:
+    performInventory(workspace_url, groupL)
+    for g in groupL:
+      memberList="{"
+      for mem in groupMembers[groupNameDict[g]]:
+        memberList+="\"value\":\""+mem+"\""
+      memberList+="}"
+      data={
+              "schemas": [ "urn:ietf:params:scim:schemas:core:2.0:Group" ],
+              "displayName": g+'_WSG',
+              "members": [
+                  {
+                    memberList
+                  }
+                ]
+          }
+      res=requests.post(f"{workspace_url}/api/2.0/preview/scim/v2/Groups", headers=headers, json.dumps(data))
+      groupWSGList[res.json()["id"]]=g
+      groupWSGNameDict[g]=res.json()["id"]
+    applyGroupPermission(workspace_url, "Workspace")
+    deleteWSGroup(workspace_url, groupL, "Original")
+    
+  except Exception as e:
+    print(f' Error creating backup group, {e})
+
+# COMMAND ----------
+
+def createAccountGroup(groupL : list):
+  try:
+    performInventory(workspace_url, groupL)
+    for g in groupL:
+      memberList="{"
+      for mem in groupMembers[groupNameDict[g]]:
+        memberList+="\"value\":\""+mem+"\""
+      memberList+="}"
+      data={
+              "schemas": [ "urn:ietf:params:scim:schemas:core:2.0:Group" ],
+              "displayName": g+'_WSG',
+              "members": [
+                  {
+                    memberList
+                  }
+                ]
+          }
+      res=requests.post(f"{workspace_url}/api/2.0/preview/scim/v2/Groups", headers=headers, json.dumps(data))
+      groupWSGList[res.json()["id"]]=g
+      groupWSGNameDict[g]=res.json()["id"]
+    applyGroupPermission(workspace_url, "Workspace")
+    deleteWSGroup(workspace_url, groupL, "Original")
+    
+  except Exception as e:
+    print(f' Error creating account level group, {e})
+
+# COMMAND ----------
 
 
 #print(groupList)
@@ -633,80 +869,3 @@ def updateSecretPermission(secretPermission : dict):
 #updateSecretPermission(secretScopePerm)
 #updateGroup2Permission('dashboards',dashboardPerm)
 #updateGroupPermission('authorization',passwordPerm)
-
-# COMMAND ----------
-
-def getDataObjectsACL(workspace_url:str)-> list:
-  dbs = spark.sql("show databases")
-  aclList = []
-
-  for db in dbs.collect():
-    databaseName = ""
-
-    databaseName = db.databaseName
-    databaseName = 'default'
-
-    # append the database df to the list
-    df=(spark.sql("SHOW GRANT ON DATABASE {}".format(databaseName))
-                   .withColumn("ObjectKey", lit(databaseName))
-                   .withColumn("ObjectType", lit("DATABASE"))
-                   .filter(col("ActionType")!="OWN")
-       )
-    aclList=df.collect()
-    tables = spark.sql("show tables in {}".format(databaseName)).filter(col("isTemporary") == False)
-    for table in tables.collect():
-      dft=(spark.sql("show grant on table {}.{}".format(table.database, table.tableName))
-                     .withColumn("ObjectKey", lit("`" + table.database + "`.`" + table.tableName + "`"))
-                     .withColumn("ObjectType", lit("TABLE"))
-                    )
-      aclList+=dft.collect()
-      break
-
-    views = spark.sql("show views in {}".format(databaseName)).filter(col("isTemporary") == False)
-    for view in views.collect():
-      dft=(spark.sql("show grant on view {}.{}".format(view.namespace, view.viewName))
-                     .withColumn("ObjectKey", lit("`" + view.namespace + "`.`" + view.viewName + "`"))
-                     .withColumn("ObjectType", lit("VIEW"))
-                    )
-      aclList+=dft.collect()
-      break
-
-    functions = spark.sql("show functions in {}".format(databaseName)).filter(col("function").startswith(databaseName+"."))
-    for function in functions.collect():
-      dft=(spark.sql("show grant on function {}".format( function.function))
-                     .withColumn("ObjectKey", lit("`" + function.function + "`"))
-                     .withColumn("ObjectType", lit("FUNCTION"))
-                    )
-      aclList+=dft.collect()
-      break
-
-
-    break
-  dft=(spark.sql("show grant on any file ")
-                 .withColumn("ObjectKey", lit("ANY FILE"))
-                 .withColumn("ObjectType", lit("ANY_FILE"))
-                )
-  aclList+=dft.collect()
-  aclFinalList=[acl for acl in aclList if acl[0] in groupNames]
-
-  return aclFinalList
-
-
-# COMMAND ----------
-
-def updateDataObjectsPermission(aclList : list):
-    try:
-        for acl in aclList: 
-          aclQuery = "GRANT {} ON {} {} TO `{}`".format(acl.ActionType, acl.ObjectType, acl.ObjectKey, acl.Principal)
-          print(aclQuery)
-          spark.sql(aclQuery)
-    except Exception as e:
-        print(f'Error setting permission, {e} ')
-
-# COMMAND ----------
-
-updateDataObjectsPermission(aclFinalList)
-
-# COMMAND ----------
-
-
