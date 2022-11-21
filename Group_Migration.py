@@ -7,15 +7,19 @@ from functools import reduce
 from pyspark.sql import DataFrame
 
 workspace_url = 'https://e2-demo-field-eng.cloud.databricks.com'
-workspace_url = 'https://adb-5932067186463130.10.azuredatabricks.net'
+#workspace_url = 'https://adb-5932067186463130.10.azuredatabricks.net'
+account_id='9b624b1c-0393-47d4-84bd-7d61db4d38b7'
 
 token='dapi9f43cfa7187dd43d52a3f5d515436cdb'
-token='dapi61015f016e07c4f4628f0b3cabab22ca'
+#token='dapi61015f016e07c4f4628f0b3cabab22ca'
 headers={'Authorization': 'Bearer %s' % token}
+account_token='dapi21a551e136960ba4cb617e51597d3501'
+headers_account={'Authorization': 'Bearer %s' % account_token}
 res=requests.get(f"{workspace_url}/api/2.0/preview/scim/v2/Groups", headers=headers)
 #res=requests.get(f"{workspace_url}/api/2.0/clusters/list", headers=headers)
 groupList={}
 groupWSGList={}
+accountGroups={}
 groupMembers={}
 groupEntitlements={}
 groupNameDict={}
@@ -526,7 +530,7 @@ def updateGroupEntitlements(groupEntitlements:dict, level:str):
             if level=="Workspace":
               groupId=groupWSGNameDict[groupList[group_id]]
             else:
-              groupId=groupWSGNameDict[groupList[group_id]]
+              groupId=accountGroups[groupList[group_id]]
             for e in etl:
                 entitlementList.append({"value":e})
             entitlements = {
@@ -547,7 +551,7 @@ def updateGroupRoles(groupRoles:dict, level:str):
             if level=="Workspace":
               groupId=groupWSGNameDict[groupList[group_id]]
             else:
-              groupId=groupWSGNameDict[groupList[group_id]]
+              groupId=accountGroups[groupList[group_id]]
             for e in roles:
                 roleList.append({"value":e})
             instanceProfileRoles = {
@@ -700,7 +704,7 @@ def performInventory(workspace_url:str, groupL:list):
     tableACLList=getDataObjectsACL(workspace_url)
     
   except Exception as e:
-    print(f' Error creating group inventory, {e})
+    print(f" Error creating group inventory, {e}")
 
 # COMMAND ----------
 
@@ -729,21 +733,21 @@ def applyGroupPermission(workspace_url:str, groupList:list, level:str ):
     updateDataObjectsPermission(tableACLList,groupRoles,level)
     updateGroupRoles(level)
   except Exception as e:
-    print(f' Error applying group permission, {e})
+    print(f" Error applying group permission, {e}")
           
 
 # COMMAND ----------
 
-def deleteGroups(workspace_url:str, groupL:List, mode:str):
+def deleteGroups(workspace_url:str, groupL:list, mode:str):
   try:
     for g in groupL:
       if mode=="Original":
         gID=groupNameDict[g]
       else:
-        gID=groupNameDict[g]
-      res=requests.delete(f"{workspace_url}/api/2.0/preview/scim/v2/Groups/"+groupNameDict[g], headers=headers, json.dumps(data))
+        gID=groupWSGNameDict[g]
+      res=requests.delete(f"{workspace_url}/api/2.0/preview/scim/v2/Groups/{gID}", headers=headers, data=json.dumps(data))
   except Exception as e:
-    print(f' Error deleting groups , {e})
+    print(f" Error deleting groups , {e}")
 
 # COMMAND ----------
 
@@ -764,45 +768,57 @@ def createBackupGroup(groupL : list):
                   }
                 ]
           }
-      res=requests.post(f"{workspace_url}/api/2.0/preview/scim/v2/Groups", headers=headers, json.dumps(data))
+      res=requests.post(f"{workspace_url}/api/2.0/preview/scim/v2/Groups", headers=headers, data=json.dumps(data))
       groupWSGList[res.json()["id"]]=g
       groupWSGNameDict[g]=res.json()["id"]
     applyGroupPermission(workspace_url, "Workspace")
     deleteWSGroup(workspace_url, groupL, "Original")
     
   except Exception as e:
-    print(f' Error creating backup group, {e})
+    print(f" Error creating backup group, {e}")
 
 # COMMAND ----------
 
-def createAccountGroup(groupL : list):
+def validateAccountGroup(workspace_url,groupL):
   try:
-    performInventory(workspace_url, groupL)
-    for g in groupL:
-      memberList="{"
-      for mem in groupMembers[groupNameDict[g]]:
-        memberList+="\"value\":\""+mem+"\""
-      memberList+="}"
-      data={
-              "schemas": [ "urn:ietf:params:scim:schemas:core:2.0:Group" ],
-              "displayName": g+'_WSG',
-              "members": [
-                  {
-                    memberList
-                  }
-                ]
-          }
-      res=requests.post(f"{workspace_url}/api/2.0/preview/scim/v2/Groups", headers=headers, json.dumps(data))
-      groupWSGList[res.json()["id"]]=g
-      groupWSGNameDict[g]=res.json()["id"]
-    applyGroupPermission(workspace_url, "Workspace")
-    deleteWSGroup(workspace_url, groupL, "Original")
     
+    #print(workspace_url)
+    res=requests.get(f"{workspace_url}/api/2.0/account/scim/v2/Groups", headers=headers)
+    for grp in res.json()['Resources']:
+      accountGroups[grp['displayName']]=grp['id']
+      #print(grp['displayName'])
+      
+    for g in groupL:
+      if g not in accountGroups:
+        print(f"group {g} is not present in account level, please add correct group and try again")
+        return 1
+      
   except Exception as e:
-    print(f' Error creating account level group, {e})
+    print(f" Error validating account level group, {e}")
 
 # COMMAND ----------
 
+def createAccountGroup(workspace_url:str, groupL : list):
+  try:
+    if validateAccountGroup(workspace_url, groupL)==1: return
+    data={
+              "permissions": ["USER"]
+          }
+  
+    for g in groupL:     
+      res=requests.put(f"{workspace_url}/api/2.0/preview/permissionassignments/principals/{accountGroups[g]}", headers=headers, data=json.dumps(data))
+      print(res.text)
+    applyGroupPermission(workspace_url, "Account")
+    deleteWSGroup(workspace_url, groupL, "Backup")
+    
+  except Exception as e:
+    print(f" Error creating account level group, {e}")
+
+# COMMAND ----------
+
+gList=['analysts']
+#validateAccountGroup(workspace_url,gList)
+createAccountGroup(workspace_url,gList)
 
 #print(groupList)
 #groupList=getGroupList(resJson)
@@ -869,3 +885,7 @@ def createAccountGroup(groupL : list):
 #updateSecretPermission(secretScopePerm)
 #updateGroup2Permission('dashboards',dashboardPerm)
 #updateGroupPermission('authorization',passwordPerm)
+
+# COMMAND ----------
+
+
