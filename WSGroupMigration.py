@@ -646,7 +646,7 @@ class GroupMigration:
     def updateDataObjectsPermission(aclList : list, level:str):
         try:
             suffix=""
-            if level="Workspace":suffix="_WSG"
+            if level=="Workspace":suffix="_WSG"
             for acl in aclList: 
                 aclQuery = "GRANT {} ON {} {} TO `{}`".format(acl.ActionType, acl.ObjectType, acl.ObjectKey, acl.Principal+suffix)
                 print(aclQuery)

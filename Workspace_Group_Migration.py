@@ -1,4 +1,17 @@
 # Databricks notebook source
+from WSGroupMigration import GroupMigration
+
+# COMMAND ----------
+
+groupL=["BusinessAnalyst"]
+account_id="9b624b1c-0393-47d4-84bd-7d61db4d38b7"
+workspace_url = 'https://e2-demo-field-eng.cloud.databricks.com'
+token='dapi9f43cfa7187dd43d52a3f5d515436cdb'
+
+gm=GroupMigration( groupL = groupL , cloud="AWS" , account_id = account_id, workspace_url = workspace_url, pat=token )
+
+# COMMAND ----------
+
 from os import getgrouplist
 import requests
 import json, math
