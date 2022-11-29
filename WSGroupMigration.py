@@ -549,7 +549,7 @@ class GroupMigration:
             for group_id, etl in groupEntitlements.items():
                 entitlementList=[]
                 if level=="Workspace":
-                  groupId=self.groupWSGNameDict[self.groupList[group_id]]
+                  groupId=self.groupWSGNameDict[self.groupList[group_id]+"_WSG"]
                 else:
                   groupId=self.accountGroups[self.groupList[group_id]]
                 for e in etl:
@@ -560,7 +560,7 @@ class GroupMigration:
                                             "path": "entitlements",
                                             "value": entitlementList}]
                             }
-                resPatch=requests.patch(f'{self.workspace_url}/api/2.0/preview/scim/v2/Groups/{group_id}', headers=self.headers, data=json.dumps(entitlements))
+                resPatch=requests.patch(f'{self.workspace_url}/api/2.0/preview/scim/v2/Groups/{groupId}', headers=self.headers, data=json.dumps(entitlements))
         except Exception as e:
             print(f'error applying entitiement for group id: {group_id}.')
 
@@ -784,17 +784,17 @@ class GroupMigration:
         
       except Exception as e:
         print(f" Error getting group permission, {e}")
-    def applyGroupPermission(self, groupList:list, level:str ):
+    def applyGroupPermission(self, level:str ):
       try:
-        self.updateGroupEntitlements(self.groupEntitlements,level)
-        self.updateGroupPermission('clusters',self.clusterPerm,level)
-        self.updateGroupPermission('cluster-policies',self.clusterPolicyPerm,level)
-        self.updateGroupPermission('sql/warehouses',self.warehousePerm,level)
-        self.updateGroupPermission('instance-pools',self.instancePoolPerm,level)
-        self.updateGroupPermission('jobs',self.jobPerm,level)
-        self.updateGroupPermission('experiments',self.expPerm,level)
-        self.updateGroupPermission('registered-models',self.modelPerm,level)
-        self.updateGroupPermission('pipelines',self.dltPerm,level)
+        #self.updateGroupEntitlements(self.groupEntitlements,level)
+        #self.updateGroupPermission('clusters',self.clusterPerm,level)
+        #self.updateGroupPermission('cluster-policies',self.clusterPolicyPerm,level)
+        #self.updateGroupPermission('sql/warehouses',self.warehousePerm,level)
+        #self.updateGroupPermission('instance-pools',self.instancePoolPerm,level)
+        #self.updateGroupPermission('jobs',self.jobPerm,level)
+        #self.updateGroupPermission('experiments',self.expPerm,level)
+        #self.updateGroupPermission('registered-models',self.modelPerm,level)
+        #self.updateGroupPermission('pipelines',self.dltPerm,level)
         self.updateGroupPermission('directories',self.folderPerm,level)
         self.updateGroupPermission('notebooks',self.notebookPerm,level)
         self.updateGroupPermission('repos',self.repoPerm,level)
@@ -804,7 +804,7 @@ class GroupMigration:
         self.updateGroup2Permission('queries',self.queryPerm,level)
         self.updateGroup2Permission('alerts',self.alertPerm,level)
         self.updateGroupPermission('authorization',self.passwordPerm,level)
-        self.updateDataObjectsPermission(self.dataObjectsPerm,self.groupRoles,level)
+        #self.updateDataObjectsPermission(self.dataObjectsPerm,self.groupRoles,level)
         self.updateGroupRoles(level)
       except Exception as e:
         print(f" Error applying group permission, {e}")
@@ -819,31 +819,32 @@ class GroupMigration:
       except Exception as e:
         print(f" Error deleting groups , {e}")
         self.performInventory(self.groupL)
-    def createBackupGroup(self, groupL:list, mode:str):
+    def createBackupGroup(self, groupL:list):
       try:
-        self.performInventory()
+        #self.performInventory()
         for g in self.groupL:
-          memberList="{"
-          for mem in self.groupMembers[self.groupNameDict[g]]:
-            memberList+="\"value\":\""+mem+"\""
-          memberList+="}"
+          memberList=[]
+          if self.groupNameDict[g] in self.groupMembers:
+            for mem in self.groupMembers[self.groupNameDict[g]]:
+              memberList.append({"value":mem[1]})
           data={
                   "schemas": [ "urn:ietf:params:scim:schemas:core:2.0:Group" ],
                   "displayName": g+'_WSG',
-                  "members": [
-                      {
-                        memberList
-                      }
-                    ]
+                  "members": memberList
               }
           res=requests.post(f"{self.workspace_url}/api/2.0/preview/scim/v2/Groups", headers=self.headers, data=json.dumps(data))
-          self.groupWSGList[res.json()["id"]]=g
-          self.groupWSGNameDict[g]=res.json()["id"]
-        self.applyGroupPermission(self.workspace_url, "Workspace")
-        self.deleteWSGroup(self.workspace_url, groupL, "Original")
+          if res.status_code == 409:
+            print(f'group with name {g}_WSG already present, please delete and try again.')
+            continue
+            
+            
+          self.groupWSGList[res.json()["id"]]=g+'_WSG'
+          self.groupWSGNameDict[g+'_WSG']=res.json()["id"]
+        #self.applyGroupPermission("Workspace")
+        #self.deleteWSGroup(groupL, "Original")
       except Exception as e:
-        print(f" Error deleting groups , {e}")
-        self.performInventory(self.groupL)
+        print(f" Error creating backgroup groups , {e}")
+        #self.performInventory(self.groupL)
     
     def validateAccountGroup(self):
       try:
