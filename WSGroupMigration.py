@@ -114,7 +114,7 @@ class GroupMigration:
                 aclList.append(list([acl['group_name'],acl['all_permissions'][0]['permission_level']]))
             except KeyError:
                 continue
-        aclList=[acl for acl in aclList if acl[0] in self.groupL]
+        aclList=[acl for acl in aclList ]#if acl[0] in self.groupL]
         return aclList
     def getACL2(self, acls:dict)->list:
         aclList=[]
@@ -198,7 +198,9 @@ class GroupMigration:
             pages=math.ceil(resDJson['count']/resDJson['page_size'])
             
             dashboardPerm={}
-            for pg in range(1,4+1):
+            #print(str(pages))
+            for pg in range(1,pages+1):
+                #print(str(pg))
                 resD=requests.get(f"{self.workspace_url}/api/2.0/preview/sql/dashboards?page={str(pg)}", headers=self.headers)
                 resDJson=resD.json()            
                 for c in resDJson['results']:
@@ -228,7 +230,9 @@ class GroupMigration:
             resQJson=resQ.json()
             queryPerm={}
             pages=math.ceil(resQJson['count']/resQJson['page_size'])
-            for pg in range(1,4+1):
+            #print(str(pages))
+            for pg in range(1,pages+1):
+                #print(str(pg))
                 resQ=requests.get(f"{self.workspace_url}/api/2.0/preview/sql/queries?page={str(pg)}", headers=self.headers)
                 resQJson=resQ.json()    
                 for c in resQJson['results']:
@@ -317,12 +321,15 @@ class GroupMigration:
     def getJobACL(self)-> dict: 
         try:
             jobPerm={}
+            offset=0
+            limit=25
             while True:
-                resJob=requests.get(f"{self.workspace_url}/api/2.1/jobs/list", headers=self.headers)
+               # print(str(offset))
+                resJob=requests.get(f"{self.workspace_url}/api/2.1/jobs/list?limit={str(limit)}&offset={str(offset)}", headers=self.headers)
                 resJobJson=resJob.json()
-                if resJob.text=="{\"has_more\":false}":
-                    print('No jobs available')
-                    return {}
+                if resJobJson['has_more']==False:
+                    print('no more jobs available')
+                    break  
                 for c in resJobJson['jobs']:
                     jobID=c['job_id']
                     resJobPerm=requests.get(f"{self.workspace_url}/api/2.0/permissions/jobs/{jobID}", headers=self.headers)
@@ -333,8 +340,9 @@ class GroupMigration:
                     aclList=self.getACL(resJobPermJson['access_control_list'])                
                     if len(aclList)==0:continue
                     jobPerm[jobID]=aclList    
-                if resJobJson['has_more']==True:
-                    break    
+                if resJobJson['has_more']==False:
+                    break  
+                offset+=25
             return jobPerm
         except Exception as e:
             print(f'error in retriveing job permission: {e}')
@@ -344,9 +352,9 @@ class GroupMigration:
             expPerm={}
             while True:
                 data={}
-                data={'max_results':20}
+                data={'max_results':100}
                 if nextPageToken!="":    
-                    data={'page_token':nextPageToken, 'max_results':'20'}
+                    data={'page_token':nextPageToken, 'max_results':'100'}
                 
                 resExp=requests.get(f"{self.workspace_url}/api/2.0/mlflow/experiments/list", headers=self.headers,data=json.dumps(data))
                 resExpJson=resExp.json()
@@ -369,7 +377,7 @@ class GroupMigration:
                     expPerm[expID]=aclList  
                 try:
                     nextPageToken=resExpJson['next_page_token']
-                    break
+                    #break
                 except KeyError:
                     break
             return expPerm
@@ -405,7 +413,7 @@ class GroupMigration:
                     modelPerm[modelID]=aclList  
                 try:
                     nextPageToken=resModelJson['next_page_token']
-                    break
+                    #break
                 except KeyError:
                     break
             return modelPerm
@@ -437,7 +445,7 @@ class GroupMigration:
                     dltPerm[dltID]=aclList  
                 try:
                     nextPageToken=resDltJson['next_page_token']
-                    break
+                    #break
                 except KeyError:
                     break
 
@@ -454,10 +462,11 @@ class GroupMigration:
             if len(resFolderJson)==0:
                 return
             for c in resFolderJson['objects']:
-                if c['object_type']=="DIRECTORY":
+                if c['object_type']=="DIRECTORY" and c['path'].startswith('/Repos') == False and c['path'].startswith('/Shared') == False:
+                    #if c['path'][-4:]==".com": print(c['path'])
                     self.folderList[c['object_id']]=c['path']
                     self.getFolderList(c['path'])
-                elif c['object_type']=="NOTEBOOK":
+                elif c['object_type']=="NOTEBOOK" and c['path'].startswith('/Repos') == False and c['path'].startswith('/Shared') == False:
                     self.notebookList[c['object_id']]=c['path']
 
             return 
@@ -467,7 +476,8 @@ class GroupMigration:
 
     def getFoldersNotebookACL(self)-> list:
         try:
-            self.getFolderList("/Users/hari.selvarajan@databricks.com")
+            self.getFolderList("/")
+            
             folderPerm={}
             notebookPerm={}
             for k,v in self.folderList.items():
@@ -476,7 +486,10 @@ class GroupMigration:
                     print(f'feature not enabled for this tier')
                     pass
                 resFolderPermJson=resFolderPerm.json()   
-                aclList=self.getACL(resFolderPermJson['access_control_list'])            
+                try:
+                  aclList=self.getACL(resFolderPermJson['access_control_list'])   
+                except Exception as e:
+                  print(e)
                 if len(aclList)==0:continue
                 folderPerm[k]=aclList  
             for k,v in self.notebookList.items():
@@ -485,7 +498,10 @@ class GroupMigration:
                     print(f'feature not enabled for this tier')
                     pass
                 resNotebookPermJson=resNotebookPerm.json()   
-                aclList=self.getACL(resNotebookPermJson['access_control_list'])
+                try:
+                  aclList=self.getACL(resNotebookPermJson['access_control_list'])
+                except Exception as e:
+                  print(e)
                 if len(aclList)==0:continue
                 notebookPerm[k]=aclList  
             return folderPerm, notebookPerm
@@ -500,7 +516,7 @@ class GroupMigration:
                 data={}
                 data={'max_results':20}
                 if nextPageToken!="":    
-                    data={'page_token':nextPageToken}
+                    data={'next_page_token':nextPageToken}
                 resRepo=requests.get(f"{self.workspace_url}/api/2.0/repos", headers=self.headers,data=json.dumps(data))
                 resRepoJson=resRepo.json()
                 if len(resRepoJson)==0:
@@ -518,7 +534,6 @@ class GroupMigration:
                     repoPerm[repoID]=aclList  
                 try:
                     nextPageToken=resRepoJson['next_page_token']
-                    break
                 except KeyError:
                     break
 
@@ -676,53 +691,69 @@ class GroupMigration:
     def getDataObjectsACL(self)-> list:
       dbs = self.spark.sql("show databases")
       aclList = []
+      try:
 
-      for db in dbs.collect():
-        databaseName = ""
+        for db in dbs.collect():
+          databaseName = ""
 
-        databaseName = db.databaseName
-        databaseName = 'default'
+          databaseName = db.databaseName
+          databaseName = 'default'
 
-        # append the database df to the list
-        df=(self.spark.sql("SHOW GRANT ON DATABASE {}".format(databaseName))
-                       .withColumn("ObjectKey", lit(databaseName))
-                       .withColumn("ObjectType", lit("DATABASE"))
-                       .filter(col("ActionType")!="OWN")
-           )
-        aclList=df.collect()
-        tables = self.spark.sql("show tables in {}".format(databaseName)).filter(col("isTemporary") == False)
-        for table in tables.collect():
-          dft=(self.spark.sql("show grant on table {}.{}".format(table.database, table.tableName))
-                         .withColumn("ObjectKey", lit("`" + table.database + "`.`" + table.tableName + "`"))
-                         .withColumn("ObjectType", lit("TABLE"))
-                        )
-          aclList+=dft.collect()
+          # append the database df to the list
+          df=(self.spark.sql("SHOW GRANT ON DATABASE {}".format(databaseName))
+                         .withColumn("ObjectKey", lit(databaseName))
+                         .withColumn("ObjectType", lit("DATABASE"))
+                         .filter(col("ActionType")!="OWN")
+             )
+          aclList=df.collect()
+          tables = self.spark.sql("show tables in {}".format(databaseName)).filter(col("isTemporary") == False)
+          for table in tables.collect():
+            try:
+              print(table)
+              if table.tableName=='testtable': continue
+              dft=(self.spark.sql("show grant on table {}.`{}`".format(table.database, table.tableName))
+                             .withColumn("ObjectKey", lit("`" + table.database + "`.`" + table.tableName + "`"))
+                             .withColumn("ObjectType", lit("TABLE"))
+                            )
+              aclList+=dft.collect()
+            except Exception as e:
+              print(f'error retriving acl for table {table.tableName}.')
+            #break
+
+          views = self.spark.sql("show views in {}".format(databaseName)).filter(col("isTemporary") == False)
+          for view in views.collect():
+            try:
+              
+              dft=(self.spark.sql("show grant on view {}.`{}`".format(view.namespace, view.viewName))
+                             .withColumn("ObjectKey", lit("`" + view.namespace + "`.`" + view.viewName + "`"))
+                             .withColumn("ObjectType", lit("VIEW"))
+                            )
+              aclList+=dft.collect()
+            except Exception as e:
+              print(f'error retriving acl for view {view.viewName}.')
+            #break
+
+          functions = self.spark.sql("show functions in {}".format(databaseName)).filter(col("function").startswith('spark_catalog.'+databaseName+"."))
+          for function in functions.collect():
+            try:
+              
+              dft=(self.spark.sql("show grant on function `{}`".format( function.function))
+                             .withColumn("ObjectKey", lit("`" + function.function + "`"))
+                             .withColumn("ObjectType", lit("FUNCTION"))
+                            )
+              aclList+=dft.collect()
+            except Exception as e:
+              print(f'error retriving acl for function {function.function}.')
+            #break
           break
-
-        views = self.spark.sql("show views in {}".format(databaseName)).filter(col("isTemporary") == False)
-        for view in views.collect():
-          dft=(self.spark.sql("show grant on view {}.{}".format(view.namespace, view.viewName))
-                         .withColumn("ObjectKey", lit("`" + view.namespace + "`.`" + view.viewName + "`"))
-                         .withColumn("ObjectType", lit("VIEW"))
-                        )
-          aclList+=dft.collect()
-          break
-
-        functions = self.spark.sql("show functions in {}".format(databaseName)).filter(col("function").startswith(databaseName+"."))
-        for function in functions.collect():
-          dft=(self.spark.sql("show grant on function {}".format( function.function))
-                         .withColumn("ObjectKey", lit("`" + function.function + "`"))
-                         .withColumn("ObjectType", lit("FUNCTION"))
-                        )
-          aclList+=dft.collect()
-          break
-        break
-      dft=(self.spark.sql("show grant on any file ")
-                     .withColumn("ObjectKey", lit("ANY FILE"))
-                     .withColumn("ObjectType", lit(""))
-                    )
-      aclList+=dft.collect()
-      aclFinalList=[acl for acl in aclList if acl[0] in self.groupL]
+        dft=(self.spark.sql("show grant on any file ")
+                       .withColumn("ObjectKey", lit("ANY FILE"))
+                       .withColumn("ObjectType", lit(""))
+                      )
+        aclList+=dft.collect()
+        aclFinalList=[acl for acl in aclList if acl[0] in self.groupL]
+      except Exception as e:
+        print(f'Error retriving table acl object permission {e}')
       return aclFinalList
     def updateDataObjectsPermission(self, aclList : list, level:str):
         try:
@@ -750,38 +781,38 @@ class GroupMigration:
         groupNames=[v for k,v in self.groupList.items()]
         for k,v in self.groupList.items():
           self.groupNameDict[v]=k    
-        print('performing password inventory')
-        self.passwordPerm= self.getPasswordACL()
-        print('performing cluster inventory')
-        self.clusterPerm=self.getClusterACL()
-        print('performing cluster policy inventory')
-        self.clusterPolicyPerm=self.getClusterPolicyACL()
-        print('performing warehouse inventory')
-        self.warehousePerm=self.getWarehouseACL()
-        print('performing dashboard inventory')
-        self.dashboardPerm=self.getDashboardACL()
-        print('performing queries inventory')
-        self.queryPerm=self.getQueriesACL()
-        print('performing alerts inventory')
-        self.alertPerm=self.getAlertsACL()
-        print('performing instance pools inventory')
-        self.instancePoolPerm=self.getPoolACL()
-        print('performing jobs inventory')
-        self.jobPerm=self.getJobACL()
-        print('performing experiments inventory')
-        self.expPerm=self.getExperimentACL()
-        print('performing registered models inventory')
-        self.modelPerm=self.getModelACL()
-        print('performing DLT inventory')
-        self.dltPerm=self.getDLTACL()
-        print('performing folders and notebook inventory')
-        self.folderPerm, self.notebookPerm=self.getFoldersNotebookACL()
-        print('performing repos inventory')
-        self.repoPerm=self.getRepoACL()
-        print('performing token inventory')
-        self.tokenPerm=self.getTokenACL()
-        print('performing secret scope inventory')
-        self.secretScopePerm=self.getSecretScoppeACL()
+        #print('performing password inventory')
+        #self.passwordPerm= self.getPasswordACL()
+        #print('performing cluster inventory')
+        #self.clusterPerm=self.getClusterACL()
+        #print('performing cluster policy inventory')
+        #self.clusterPolicyPerm=self.getClusterPolicyACL()
+        #print('performing warehouse inventory')
+        #self.warehousePerm=self.getWarehouseACL()
+        #print('performing dashboard inventory')
+        #self.dashboardPerm=self.getDashboardACL() # 5 mins
+        #print('performing queries inventory')
+        #self.queryPerm=self.getQueriesACL()
+        #print('performing alerts inventory')
+        #self.alertPerm=self.getAlertsACL()
+        #print('performing instance pools inventory')
+        #self.instancePoolPerm=self.getPoolACL()
+        #print('performing jobs inventory')
+        #self.jobPerm=self.getJobACL() #33 mins
+        #print('performing experiments inventory')
+        #self.expPerm=self.getExperimentACL()
+        #print('performing registered models inventory')
+        #self.modelPerm=self.getModelACL()
+        #print('performing DLT inventory')
+        #self.dltPerm=self.getDLTACL()
+        #print('performing folders and notebook inventory')
+        #self.folderPerm, self.notebookPerm=self.getFoldersNotebookACL()
+        #print('performing repos inventory')
+        #self.repoPerm=self.getRepoACL()
+        #print('performing token inventory')
+        #self.tokenPerm=self.getTokenACL()
+        #print('performing secret scope inventory')
+        #self.secretScopePerm=self.getSecretScoppeACL()
         print('performing Tabel ACL object inventory')
         self.dataObjectsPerm=self.getDataObjectsACL()
 
@@ -944,7 +975,7 @@ class GroupMigration:
           self.groupWSGList[res.json()["id"]]="db-temp-"+g
           self.groupWSGNameDict["db-temp-"+g]=res.json()["id"]
         self.applyGroupPermission("Workspace")
-        self.deleteGroups("Workspace")
+        #self.deleteGroups("Workspace")
       except Exception as e:
         print(f" Error creating backup groups , {e}")
     
@@ -971,7 +1002,7 @@ class GroupMigration:
         for g in self.WSGroup:     
           res=requests.put(f"{self.workspace_url}/api/2.0/preview/permissionassignments/principals/{self.accountGroups[g]}", headers=self.headers, data=json.dumps(data))
         self.applyGroupPermission("Account")
-        self.deleteGroups("Account")
+        #self.deleteGroups("Account")
 
       except Exception as e:
         print(f" Error creating account level group, {e}")
