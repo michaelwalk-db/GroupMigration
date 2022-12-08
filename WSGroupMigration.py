@@ -709,7 +709,7 @@ class GroupMigration:
           tables = self.spark.sql("show tables in {}".format(databaseName)).filter(col("isTemporary") == False)
           for table in tables.collect():
             try:
-              print(table)
+              #print(table)
               if table.tableName=='testtable': continue
               dft=(self.spark.sql("show grant on table {}.`{}`".format(table.database, table.tableName))
                              .withColumn("ObjectKey", lit("`" + table.database + "`.`" + table.tableName + "`"))
