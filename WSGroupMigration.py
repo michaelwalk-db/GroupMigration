@@ -7,7 +7,7 @@ from pyspark.sql import DataFrame, session
 
 class GroupMigration:
 
-    def __init__(self, groupL : list, cloud : str, account_id : str, workspace_url : str, pat : str, spark : session.SparkSession, userName : str):
+    def __init__(self, groupL : list, cloud : str, account_id : str, workspace_url : str, pat : str, spark : session.SparkSession, userName : str, checkTableACL : False):
         self.groupL=groupL
         self.cloud=cloud    
         self.workspace_url = workspace_url
@@ -46,6 +46,7 @@ class GroupMigration:
         self.userName=userName
         self.AccGroup=["db-temp-"+g for g in groupL]
         self.WSGroup=groupL
+        self.checkTableACL=checkTableACL
     
 
     def validateWSGroup(self)->list:
@@ -781,40 +782,42 @@ class GroupMigration:
         groupNames=[v for k,v in self.groupList.items()]
         for k,v in self.groupList.items():
           self.groupNameDict[v]=k    
-        #print('performing password inventory')
-        #self.passwordPerm= self.getPasswordACL()
-        #print('performing cluster inventory')
-        #self.clusterPerm=self.getClusterACL()
-        #print('performing cluster policy inventory')
-        #self.clusterPolicyPerm=self.getClusterPolicyACL()
-        #print('performing warehouse inventory')
-        #self.warehousePerm=self.getWarehouseACL()
-        #print('performing dashboard inventory')
-        #self.dashboardPerm=self.getDashboardACL() # 5 mins
-        #print('performing queries inventory')
-        #self.queryPerm=self.getQueriesACL()
-        #print('performing alerts inventory')
-        #self.alertPerm=self.getAlertsACL()
-        #print('performing instance pools inventory')
-        #self.instancePoolPerm=self.getPoolACL()
-        #print('performing jobs inventory')
-        #self.jobPerm=self.getJobACL() #33 mins
-        #print('performing experiments inventory')
-        #self.expPerm=self.getExperimentACL()
-        #print('performing registered models inventory')
-        #self.modelPerm=self.getModelACL()
-        #print('performing DLT inventory')
-        #self.dltPerm=self.getDLTACL()
-        #print('performing folders and notebook inventory')
-        #self.folderPerm, self.notebookPerm=self.getFoldersNotebookACL()
-        #print('performing repos inventory')
-        #self.repoPerm=self.getRepoACL()
-        #print('performing token inventory')
-        #self.tokenPerm=self.getTokenACL()
-        #print('performing secret scope inventory')
-        #self.secretScopePerm=self.getSecretScoppeACL()
-        print('performing Tabel ACL object inventory')
-        self.dataObjectsPerm=self.getDataObjectsACL()
+        if self.cloud=="AWS":
+          print('performing password inventory')
+          self.passwordPerm= self.getPasswordACL()
+        print('performing cluster inventory')
+        self.clusterPerm=self.getClusterACL()
+        print('performing cluster policy inventory')
+        self.clusterPolicyPerm=self.getClusterPolicyACL()
+        print('performing warehouse inventory')
+        self.warehousePerm=self.getWarehouseACL()
+        print('performing dashboard inventory')
+        self.dashboardPerm=self.getDashboardACL() # 5 mins
+        print('performing queries inventory')
+        self.queryPerm=self.getQueriesACL()
+        print('performing alerts inventory')
+        self.alertPerm=self.getAlertsACL()
+        print('performing instance pools inventory')
+        self.instancePoolPerm=self.getPoolACL()
+        print('performing jobs inventory')
+        self.jobPerm=self.getJobACL() #33 mins
+        print('performing experiments inventory')
+        self.expPerm=self.getExperimentACL()
+        print('performing registered models inventory')
+        self.modelPerm=self.getModelACL()
+        print('performing DLT inventory')
+        self.dltPerm=self.getDLTACL()
+        print('performing folders and notebook inventory')
+        self.folderPerm, self.notebookPerm=self.getFoldersNotebookACL()
+        print('performing repos inventory')
+        self.repoPerm=self.getRepoACL()
+        print('performing token inventory')
+        self.tokenPerm=self.getTokenACL()
+        print('performing secret scope inventory')
+        self.secretScopePerm=self.getSecretScoppeACL()
+        if self.checkTableACL==True:
+          print('performing Tabel ACL object inventory')
+          self.dataObjectsPerm=self.getDataObjectsACL()
 
       except Exception as e:
         print(f" Error creating group inventory, {e}")
@@ -831,12 +834,13 @@ class GroupMigration:
         print('Group Entitlements:')
         print("{:<20} {:<100}".format('Group ID', 'Group Entitlements'))
         for key, value in self.groupEntitlements.items():print("{:<20} {:<100}".format(key, str(value)))
-        print('Group Roles:')
-        print("{:<20} {:<100}".format('Group ID', 'Group Roles'))
-        for key, value in self.groupRoles.items():print("{:<20} {:<100}".format(key, str(value)))
-        print('Group Passwords:')
-        print("{:<20} {:<100}".format('Password', 'Group Names'))
-        for key, value in self.passwordPerm.items():print("{:<20} {:<100}".format(key, str(value)))
+        if self.cloud=="AWS":
+          print('Group Roles:')
+          print("{:<20} {:<100}".format('Group ID', 'Group Roles'))
+          for key, value in self.groupRoles.items():print("{:<20} {:<100}".format(key, str(value)))
+          print('Group Passwords:')
+          print("{:<20} {:<100}".format('Password', 'Group Names'))
+          for key, value in self.passwordPerm.items():print("{:<20} {:<100}".format(key, str(value)))
         print('Cluster Permission:')
         print("{:<20} {:<100}".format('Cluster ID', 'Group Permission'))
         for key, value in self.clusterPerm.items():print("{:<20} {:<100}".format(key, str(value)))
@@ -885,8 +889,9 @@ class GroupMigration:
         print('Notebook  Permission:')
         print("{:<20} {:<100}".format('Notebook ID', 'Group Permission'))
         for key, value in self.notebookPerm.items():print("{:<20} {:<100}".format(key, str(value)))
-        print('TableACL  Permission:')
-        for item in self.dataObjectsPerm:print(item)
+        if self.checkTableACL==True:
+          print('TableACL  Permission:')
+          for item in self.dataObjectsPerm:print(item)
         
       except Exception as e:
         print(f" Error getting group permission, {e}")
@@ -927,12 +932,15 @@ class GroupMigration:
         self.updateGroup2Permission('queries',self.queryPerm,level)
         print('applying alerts permissions')
         self.updateGroup2Permission('alerts',self.alertPerm,level)
-        print('applying password permissions')
-        self.updateGroupPermission('authorization',self.passwordPerm,level)
-        print('applying table acl object permissions')
-        self.updateDataObjectsPermission(self.dataObjectsPerm,level)
-        print('applying instance profile permissions')
-        self.updateGroupRoles(level)
+        if self.cloud=="AWS":
+          print('applying password permissions')
+          self.updateGroupPermission('authorization',self.passwordPerm,level)
+          print('applying instance profile permissions')
+          self.updateGroupRoles(level)
+        if self.checkTableACL==True:
+          print('applying table acl object permissions')
+          self.updateDataObjectsPermission(self.dataObjectsPerm,level)
+        
       except Exception as e:
         print(f" Error applying group permission, {e}")
     def validateTempWSGroup(self)->list:

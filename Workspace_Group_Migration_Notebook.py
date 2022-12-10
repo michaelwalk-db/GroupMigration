@@ -48,7 +48,7 @@
 # MAGIC 2. create a PAT token for the workspace which has admin access
 # MAGIC 3. Ensure SCIM integration at workspace group is disabled
 # MAGIC 4. Ensure no jobs or process is running the workspace using an user/service principal which is member of the workspace group
-# MAGIC 5. Identify which ACL needs to be migrated, Ex: if there are no acl defined at experiment level, there is no need to do inventory check (as it may take time)
+# MAGIC 5. Confirm if Table ACL is defined in the workspace and ACL defined for groups, if not Table ACL check can be skipped as it takes time to capture ACL for tables if the list is huge
 
 # COMMAND ----------
 
@@ -64,7 +64,7 @@
 # MAGIC - workspace url
 # MAGIC - pat token of the admin to the workspace
 # MAGIC - user name of the user whose pat token is generated 
-# MAGIC - a list of workspace objects to be performed ACL on
+# MAGIC - confirm if Table ACL are used and access permission set for workspace groups
 
 # COMMAND ----------
 
@@ -73,8 +73,8 @@ groupL=['analysts', 'dataengineers', '']
 account_id="9b624b1c-0393-47d4-84bd-7d61db4d38b7"
 workspace_url = 'https://e2-demo-field-eng.cloud.databricks.com'
 token='dapi9f43cfa7187dd43d52a3f5d515436cdb'
-
-gm=GroupMigration( groupL = groupL , cloud="AWS" , account_id = account_id, workspace_url = workspace_url, pat=token, spark=spark, userName='hari.selvarajan@databricks.com' )
+checkTableACL=True
+gm=GroupMigration( groupL = groupL , cloud="AWS" , account_id = account_id, workspace_url = workspace_url, pat=token, spark=spark, userName='hari.selvarajan@databricks.com', checkTableACL = checkTableACL )
 
 # COMMAND ----------
 
