@@ -115,7 +115,7 @@ class GroupMigration:
                 aclList.append(list([acl['group_name'],acl['all_permissions'][0]['permission_level']]))
             except KeyError:
                 continue
-        aclList=[acl for acl in aclList ]#if acl[0] in self.groupL]
+        aclList=[acl for acl in aclList if acl[0] in self.groupL]
         return aclList
     def getACL2(self, acls:dict)->list:
         aclList=[]
@@ -490,7 +490,7 @@ class GroupMigration:
                 try:
                   aclList=self.getACL(resFolderPermJson['access_control_list'])   
                 except Exception as e:
-                  print(e)
+                  print(f'error in retriving folder details: {e}')
                 if len(aclList)==0:continue
                 folderPerm[k]=aclList  
             for k,v in self.notebookList.items():
@@ -502,7 +502,7 @@ class GroupMigration:
                 try:
                   aclList=self.getACL(resNotebookPermJson['access_control_list'])
                 except Exception as e:
-                  print(e)
+                  print(f'error in retriving folder details: {e}')
                 if len(aclList)==0:continue
                 notebookPerm[k]=aclList  
             return folderPerm, notebookPerm
