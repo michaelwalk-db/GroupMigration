@@ -328,8 +328,8 @@ class GroupMigration:
                # print(str(offset))
                 resJob=requests.get(f"{self.workspace_url}/api/2.1/jobs/list?limit={str(limit)}&offset={str(offset)}", headers=self.headers)
                 resJobJson=resJob.json()
-                if resJobJson['has_more']==False:
-                    print('no more jobs available')
+                if resJobJson['has_more']==False and len(resJobJson)==1:
+                    print('No jobs available')
                     break  
                 for c in resJobJson['jobs']:
                     jobID=c['job_id']
@@ -472,7 +472,7 @@ class GroupMigration:
 
             return 
         except Exception as e:
-            print(f'error in retriving folder details: {e}')
+            print(f'error in retriving directory details: {e}')
 
 
     def getFoldersNotebookACL(self)-> list:
@@ -502,7 +502,7 @@ class GroupMigration:
                 try:
                   aclList=self.getACL(resNotebookPermJson['access_control_list'])
                 except Exception as e:
-                  print(f'error in retriving folder details: {e}')
+                  print(f'error in retriving notebook details: {e}')
                 if len(aclList)==0:continue
                 notebookPerm[k]=aclList  
             return folderPerm, notebookPerm
@@ -698,7 +698,7 @@ class GroupMigration:
           databaseName = ""
 
           databaseName = db.databaseName
-          databaseName = 'default'
+          #databaseName = 'default'
 
           # append the database df to the list
           df=(self.spark.sql("SHOW GRANT ON DATABASE {}".format(databaseName))
@@ -711,7 +711,7 @@ class GroupMigration:
           for table in tables.collect():
             try:
               #print(table)
-              if table.tableName=='testtable': continue
+              #if table.tableName=='testtable': continue
               dft=(self.spark.sql("show grant on table {}.`{}`".format(table.database, table.tableName))
                              .withColumn("ObjectKey", lit("`" + table.database + "`.`" + table.tableName + "`"))
                              .withColumn("ObjectType", lit("TABLE"))
