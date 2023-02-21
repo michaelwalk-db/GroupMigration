@@ -505,6 +505,9 @@ class GroupMigration:
                 if resNotebookPerm.status_code==404:
                     print(f'feature not enabled for this tier')
                     pass
+                if resNotebookPerm.status_code==403:
+                  print('Error retrieving permission for '+v+ ' '+ resNotebookPerm.json()['message'])
+                  pass
                 resNotebookPermJson=resNotebookPerm.json()   
                 try:
                   aclList=self.getACL(resNotebookPermJson['access_control_list'])
