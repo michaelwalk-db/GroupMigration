@@ -288,9 +288,10 @@ class GroupMigration:
               return
             resP=requests.get(f"{self.workspace_url}/api/2.0/preview/permissions/authorization/passwords", headers=self.headers)
             resPJson=resP.json()
-            if len(resPJson)==0:
+            if len(resPJson)<3:
                 print('No password acls defined.')
                 return {}
+              
             passwordPerm={}
             passwordPerm['passwords']=self.getACL(resPJson['access_control_list'])            
             return passwordPerm
@@ -486,11 +487,17 @@ class GroupMigration:
                 if resFolderPerm.status_code==404:
                     print(f'feature not enabled for this tier')
                     pass
+                if resFolderPerm.status_code==403:
+                  print('Error retrieving permission for '+v+ ' '+ resFolderPerm.json()['message'])
+                  pass
                 resFolderPermJson=resFolderPerm.json()   
                 try:
+                  
                   aclList=self.getACL(resFolderPermJson['access_control_list'])   
                 except Exception as e:
                   print(f'error in retriving folder details: {e}')
+                  #print('k: ',k)
+                  #print('v: ',v)
                 if len(aclList)==0:continue
                 folderPerm[k]=aclList  
             for k,v in self.notebookList.items():
