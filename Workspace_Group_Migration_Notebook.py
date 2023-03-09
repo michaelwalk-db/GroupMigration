@@ -69,12 +69,19 @@
 # COMMAND ----------
 
 from WSGroupMigration import GroupMigration
-groupL=['analysts', 'dataengineers', '']
+groupL=['analyst', 'dataengineer']
+
 account_id="9b624b1c-0393-47d4-84bd-7d61db4d38b7"
-workspace_url = 'https://e2-demo-field-eng.cloud.databricks.com'
-token=''
-checkTableACL=True
-gm=GroupMigration( groupL = groupL , cloud="AWS" , account_id = account_id, workspace_url = workspace_url, pat=token, spark=spark, userName='hari.selvarajan@databricks.com', checkTableACL = checkTableACL )
+
+workspace_url = '<>'
+
+
+
+token='<>'
+
+
+checkTableACL=False
+gm=GroupMigration( groupL = groupL , cloud="AWS" , account_id = account_id, workspace_url = workspace_url, pat=token, spark=spark, userName='<user email>', checkTableACL = checkTableACL )
 
 # COMMAND ----------
 

@@ -117,6 +117,15 @@ class GroupMigration:
                 continue
         aclList=[acl for acl in aclList if acl[0] in self.groupL]
         return aclList
+    def getACL3(self, acls:dict)->list:
+        aclList=[]
+        for acl in acls:
+            try:
+                aclList.append(list([acl['group_name'],acl['all_permissions'][0]['permission_level']]))
+            except KeyError:
+                continue
+        aclList=[acl for acl in aclList if acl[0] in self.groupL]
+        return aclList
     def getACL2(self, acls:dict)->list:
         aclList=[]
         for acl in acls:
@@ -540,7 +549,7 @@ class GroupMigration:
                         print(f'feature not enabled for this tier')
                         pass
                     resRepoPermJson=resRepoPerm.json()   
-                    aclList=self.getACL(resRepoPermJson['access_control_list'])
+                    aclList=self.getACL3(resRepoPermJson['access_control_list'])
                     if len(aclList)==0:continue
                     repoPerm[repoID]=aclList  
                 try:
