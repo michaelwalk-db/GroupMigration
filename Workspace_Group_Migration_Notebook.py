@@ -69,19 +69,24 @@
 # COMMAND ----------
 
 from WSGroupMigration import GroupMigration
+
+#If autoGenerateList=True then groupL will be ignored and all eliglbe groups will be migrated.
+autoGenerateList = True
 groupL=['analyst', 'dataengineer']
 
-account_id="9b624b1c-0393-47d4-84bd-7d61db4d38b7"
+#Find this in the account console
+account_id="ACCOUNT-ID"
 
-workspace_url = '<>'
+#Pull from your browser URL bar. Should start with "https://" and end with ".com"
+workspace_url = 'https://URL-HERE.com'
 
+#Personal Access Token. Create one in "User Settings"
+token='TOKEN'
 
-
-token='<>'
-
-
+#Should the migration Check the ACL on tables/views as well? If the workspace has freshly been migrated to UC this step might not be needed
 checkTableACL=False
-gm=GroupMigration( groupL = groupL , cloud="AWS" , account_id = account_id, workspace_url = workspace_url, pat=token, spark=spark, userName='<user email>', checkTableACL = checkTableACL )
+
+gm=GroupMigration( groupL = groupL , cloud="AWS" , account_id = account_id, workspace_url = workspace_url, pat=token, spark=spark, userName='<user email>', checkTableACL = checkTableACL, autoList = autoGenerateList)
 
 # COMMAND ----------
 
