@@ -78,7 +78,7 @@ groupL=['analyst', 'dataengineer']
 account_id="ACCOUNT-ID"
 
 #Pull from your browser URL bar. Should start with "https://" and end with ".com"
-workspace_url = 'https://URL-HERE.com'
+workspace_url='https://DOMAIN'
 
 #Personal Access Token. Create one in "User Settings"
 token='TOKEN'
@@ -86,7 +86,14 @@ token='TOKEN'
 #Should the migration Check the ACL on tables/views as well? If the workspace has freshly been migrated to UC this step might not be needed
 checkTableACL=False
 
-gm=GroupMigration( groupL = groupL , cloud="AWS" , account_id = account_id, workspace_url = workspace_url, pat=token, spark=spark, userName='<user email>', checkTableACL = checkTableACL, autoList = autoGenerateList)
+#What cloud provider? Acceptable values are "AWS" or anything other value.
+cloud='AWS'
+
+#Your databricks user email.
+userName='USER-EMAIL'
+
+#Initialize GroupMigration Class with values supplied above
+gm = GroupMigration( groupL = groupL , cloud=cloud , account_id = account_id, workspace_url = workspace_url, pat=token, spark=spark, userName=userName, checkTableACL = checkTableACL, autoList = autoGenerateList)
 
 # COMMAND ----------
 

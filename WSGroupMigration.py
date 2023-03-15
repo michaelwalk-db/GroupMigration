@@ -54,18 +54,22 @@ class GroupMigration:
         
         #Finish setting some params that depend on groupL
         if(len(self.groupL) == 0):
-            raise("Migration group list (groupL) is empty!")
+            raise Exception("Migration group list (groupL) is empty!")
         
-        self.AccGroup=["db-temp-"+g for g in groupL]
-        self.WSGroup=groupL
-            
+        self.AccGroup=["db-temp-"+g for g in self.groupL]
+        self.WSGroup=self.groupL
+        
+        print(f"Successfully initialized GroupMigration class with {len(self.groupL)} workspace-local groups to migrate. Groups to migrate:")
+        for i, group in enumerate(self.groupL, start=1):
+            print(f"{i}. {group}")
+                    
     def findMigrationEligibleGroups(self):
         print("Begin automatic generation of all migration eligible groups.")
         try:
             print("Executing request to list workspace groups")
             res=requests.get(f"{self.workspace_url}/api/2.0/preview/scim/v2/Groups", headers=self.headers)
             if res.status_code != 200:
-                raise(f'Bad status code. Expected: 200. Got: {res.status_code}')
+                raise Exception(f'Bad status code. Expected: 200. Got: {res.status_code}')
                     
             resJson=res.json()
 
@@ -80,12 +84,12 @@ class GroupMigration:
 
         except Exception as e:
             print(f'ERROR in retrieving workspace group list: {e}') 
-            return []
+            raise
         try:
             print("\nExecuting request to list account groups")
             res=requests.get(f"{self.workspace_url}/api/2.0/account/scim/v2/Groups", headers=self.headers)
             if res.status_code != 200:
-                raise(f'Bad status code. Expected: 200. Got: {res.status_code}')
+                raise Exception(f'Bad status code. Expected: 200. Got: {res.status_code}')
             resJson2=res.json()
             allAccountGroups = [r['displayName'] for r in resJson2['Resources']]
             allAccountGroups.sort()
@@ -108,6 +112,7 @@ class GroupMigration:
                 print(f"\nFound {len(migration_eligible)} current workspace-local groups to account level groups. These groups WILL BE MIGRATED.")
                 for i, group in enumerate(migration_eligible, start=1):
                     print(f"{i}. {group} (WILL MIGRATE)")
+                print('')
 
                 return migration_eligible
             else:
@@ -115,7 +120,7 @@ class GroupMigration:
                 return []
         except Exception as e:
             print(f'ERROR in retrieving account group list : {e}')
-            return []
+            raise
         
     def validateWSGroup(self)->list:
         try:
