@@ -7,10 +7,10 @@ from pyspark.sql import DataFrame, session
 
 class GroupMigration:
 
-    def __init__(self, groupL : list, cloud : str, account_id : str, workspace_url : str, pat : str, spark : session.SparkSession, userName : str, checkTableACL : False):
+    def __init__(self, groupL : list, cloud : str, account_id : str, workspace_url : str, pat : str, spark : session.SparkSession, userName : str, checkTableACL : False, autoList : bool = False):
         self.groupL=groupL
         self.cloud=cloud    
-        self.workspace_url = workspace_url
+        self.workspace_url = workspace_url.rstrip("/")
         self.account_id=account_id
         self.token=pat
         self.headers={'Authorization': 'Bearer %s' % self.token}
@@ -47,8 +47,66 @@ class GroupMigration:
         self.AccGroup=["db-temp-"+g for g in groupL]
         self.WSGroup=groupL
         self.checkTableACL=checkTableACL
-    
+        
+        #Check if we should automatically generate list, and do it immediately.
+        #Implementers Note: Could change this section to a lazy calculation by setting groupL to nil or some sentinel value and adding checks before use.
+        if(autoList) :
+            print("autoList parameter is set to TRUE. Ignoring groupL parameter and instead will automatically generate list of migraiton groups.")
+            self.groupL = self.findMigrationEligibleGroups()
+            
+    def findMigrationEligibleGroups(self):
+        print("Begin automatic generation of all migration eligible groups.")
+        try:
+            print("Executing request to list workspace groups")
+            res=requests.get(f"{self.workspace_url}/api/2.0/preview/scim/v2/Groups", headers=self.headers)
+            resJson=res.json()
 
+            allWsLocalGroups = [o["displayName"] for o in resJson["Resources"] if o['meta']['resourceType'] == "WorkspaceGroup" ]
+
+            #Prune special groups.
+            prune_groups = ["admins", "users"]
+            allWsLocalGroups = [g for g in allWsLocalGroups if g not in prune_groups]
+
+            allWsLocalGroups.sort()
+            print(f"Found {len(allWsLocalGroups)} workspace local groups. Listing (alphabetical order): \n" + "\n".join(f"{i+1}. {name}" for i, name in enumerate(allWsLocalGroups)))
+
+        except Exception as e:
+            print(f'ERROR in retrieving workspace group list: {e}') 
+            return []
+        try:
+            print("\nExecuting request to list account groups")
+            res=requests.get(f"{self.workspace_url}/api/2.0/account/scim/v2/Groups", headers=self.headers)
+            resJson2=res.json()
+            allAccountGroups = [r['displayName'] for r in resJson2['Resources']]
+            allAccountGroups.sort()
+
+            # Get set intersection of both lists
+            migration_eligible = list(set(allWsLocalGroups) & set(allAccountGroups))
+            migration_eligible.sort()
+
+            # Get list of items in allWsLocalGroups that are not in allAccountGroups
+            not_in_account_groups = [group for group in allWsLocalGroups if group not in allAccountGroups]
+            not_in_account_groups.sort()
+
+            # Print count and membership of not_in_account_groups
+            print(f"Unable to match {len(not_in_account_groups)} current workspace-local groups. No matching account level group with the same name found. These groups WILL NOT MIGRATE:")
+            for i, group in enumerate(not_in_account_groups, start=1):
+                print(f"{i}. {group} (WON'T MIGRATE)")
+
+            if(len(migration_eligible) > 0):
+                # Print count and membership of intersection
+                print(f"\nFound {len(migration_eligible)} current workspace-local groups to account level groups. These groups WILL BE MIGRATED.")
+                for i, group in enumerate(migration_eligible, start=1):
+                    print(f"{i}. {group} (WILL MIGRATE)")
+
+                return migration_eligible
+            else:
+                print("There are no migration eligible groups. All existing workspace-local groups do not exist at the account level.\nNO MIGRATION WILL BE PERFORMED.")
+                return []
+        except Exception as e:
+            print(f'ERROR in retrieving account group list : {e}')
+            return []
+        
     def validateWSGroup(self)->list:
         try:
             res=requests.get(f"{self.workspace_url}/api/2.0/preview/scim/v2/Groups", headers=self.headers)
@@ -59,7 +117,7 @@ class GroupMigration:
                   return 0
             return 1
         except Exception as e:
-            print(f'error in retriveing group objects : {e}')
+            print(f'error in retrieving group objects : {e}')
             
     def getGroupObjects(self)->list:
         try:
@@ -104,7 +162,7 @@ class GroupMigration:
                     groupRoles[e['id']]=entms   
             return [groupList, groupMembers, groupEntitlements, groupRoles]
         except Exception as e:
-            print(f'error in retriveing group objects : {e}')
+            print(f'error in retrieving group objects : {e}')
 
 
     def getACL(self, acls:dict)->list:
@@ -158,7 +216,7 @@ class GroupMigration:
                 clusterPerm[clusterId]=aclList                
             return clusterPerm    
         except Exception as e:
-            print(f'error in retriveing cluster permission: {e}')
+            print(f'error in retrieving cluster permission: {e}')
 
     def getClusterPolicyACL(self)-> dict:
         try:
@@ -180,7 +238,7 @@ class GroupMigration:
                 clusterPolicyPerm[policyid]=aclList                
             return clusterPolicyPerm
         except Exception as e:
-            print(f'error in retriveing cluster policy permission: {e}')
+            print(f'error in retrieving cluster policy permission: {e}')
 
     def getWarehouseACL(self)-> dict:
         try:
@@ -199,7 +257,7 @@ class GroupMigration:
                 warehousePerm[warehouseId]=aclList               
             return warehousePerm
         except Exception as e:
-            print(f'error in retriveing warehouse permission: {e}')
+            print(f'error in retrieving warehouse permission: {e}')
 
     def getDashboardACL(self)-> dict:
         try:
@@ -232,7 +290,7 @@ class GroupMigration:
             return dashboardPerm
 
         except Exception as e:
-            print(f'error in retriveing dashboard permission: {e}')
+            print(f'error in retrieving dashboard permission: {e}')
             raise e
     def getQueriesACL(self)-> dict:
         try:
@@ -264,7 +322,7 @@ class GroupMigration:
             return queryPerm
 
         except Exception as e:
-            print(f'error in retriveing query permission: {e}')
+            print(f'error in retrieving query permission: {e}')
     def getAlertsACL(self)-> dict:
         try:
             resA=requests.get(f"{self.workspace_url}/api/2.0/preview/sql/alerts", headers=self.headers)
@@ -289,7 +347,7 @@ class GroupMigration:
             return alertPerm
 
         except Exception as e:
-            print(f'error in retriveing alerts permission: {e}')
+            print(f'error in retrieving alerts permission: {e}')
 
     def getPasswordACL(self)-> dict:
         try:
@@ -305,7 +363,7 @@ class GroupMigration:
             passwordPerm['passwords']=self.getACL(resPJson['access_control_list'])            
             return passwordPerm
         except Exception as e:
-            print(f'error in retriveing password  permission: {e}')
+            print(f'error in retrieving password  permission: {e}')
 
     def getPoolACL(self)-> dict:
         try:
@@ -327,7 +385,7 @@ class GroupMigration:
                 instancePoolPerm[instancePID]=aclList                
             return instancePoolPerm
         except Exception as e:
-            print(f'error in retriveing Instance Pool permission: {e}') 
+            print(f'error in retrieving Instance Pool permission: {e}') 
 
     def getJobACL(self)-> dict: 
         try:
@@ -356,7 +414,7 @@ class GroupMigration:
                 offset+=25
             return jobPerm
         except Exception as e:
-            print(f'error in retriveing job permission: {e}')
+            print(f'error in retrieving job permission: {e}')
     def getExperimentACL(self)-> dict:
         try:
             nextPageToken='' 
@@ -393,7 +451,7 @@ class GroupMigration:
                     break
             return expPerm
         except Exception as e:
-            print(f'error in retriveing experiment permission: {e}')
+            print(f'error in retrieving experiment permission: {e}')
     def getModelACL(self)-> dict:
         try:
             nextPageToken=''
@@ -429,7 +487,7 @@ class GroupMigration:
                     break
             return modelPerm
         except Exception as e:
-            print(f'error in retriveing model permission: {e}')
+            print(f'error in retrieving model permission: {e}')
     def getDLTACL(self)-> dict:
         try:
             nextPageToken=''
@@ -462,7 +520,7 @@ class GroupMigration:
 
             return dltPerm
         except Exception as e:
-            print(f'error in retriveing dlt pipelines permission: {e}')
+            print(f'error in retrieving dlt pipelines permission: {e}')
 
     def getFolderList(self, path:str)-> dict:
         try:
@@ -526,7 +584,7 @@ class GroupMigration:
                 notebookPerm[k]=aclList  
             return folderPerm, notebookPerm
         except Exception as e:
-            print(f'error in retriveing folder permission: {e}')
+            print(f'error in retrieving folder permission: {e}')
 
     def getRepoACL(self)-> dict:
         try:
@@ -559,7 +617,7 @@ class GroupMigration:
 
             return repoPerm
         except Exception as e:
-            print(f'error in retriveing repos permission: {e}')
+            print(f'error in retrieving repos permission: {e}')
     def getTokenACL(self)-> dict:
         try:
             tokenPerm={}
@@ -579,7 +637,7 @@ class GroupMigration:
             tokenPerm['tokens']=aclList  
             return tokenPerm
         except Exception as e:
-            print(f'error in retriveing Token permission: {e}')
+            print(f'error in retrieving Token permission: {e}')
     def getSecretScoppeACL(self)-> dict:
         try:
 
