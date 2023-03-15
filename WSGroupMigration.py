@@ -44,8 +44,6 @@ class GroupMigration:
         self.notebookList={}
         self.spark=spark
         self.userName=userName
-        self.AccGroup=["db-temp-"+g for g in groupL]
-        self.WSGroup=groupL
         self.checkTableACL=checkTableACL
         
         #Check if we should automatically generate list, and do it immediately.
@@ -53,12 +51,22 @@ class GroupMigration:
         if(autoList) :
             print("autoList parameter is set to TRUE. Ignoring groupL parameter and instead will automatically generate list of migraiton groups.")
             self.groupL = self.findMigrationEligibleGroups()
+        
+        #Finish setting some params that depend on groupL
+        if(len(self.groupL) == 0):
+            raise("Migration group list (groupL) is empty!")
+        
+        self.AccGroup=["db-temp-"+g for g in groupL]
+        self.WSGroup=groupL
             
     def findMigrationEligibleGroups(self):
         print("Begin automatic generation of all migration eligible groups.")
         try:
             print("Executing request to list workspace groups")
             res=requests.get(f"{self.workspace_url}/api/2.0/preview/scim/v2/Groups", headers=self.headers)
+            if res.status_code != 200:
+                raise(f'Bad status code. Expected: 200. Got: {res.status_code}')
+                    
             resJson=res.json()
 
             allWsLocalGroups = [o["displayName"] for o in resJson["Resources"] if o['meta']['resourceType'] == "WorkspaceGroup" ]
@@ -68,7 +76,7 @@ class GroupMigration:
             allWsLocalGroups = [g for g in allWsLocalGroups if g not in prune_groups]
 
             allWsLocalGroups.sort()
-            print(f"Found {len(allWsLocalGroups)} workspace local groups. Listing (alphabetical order): \n" + "\n".join(f"{i+1}. {name}" for i, name in enumerate(allWsLocalGroups)))
+            print(f"\nFound {len(allWsLocalGroups)} workspace local groups. Listing (alphabetical order): \n" + "\n".join(f"{i+1}. {name}" for i, name in enumerate(allWsLocalGroups)))
 
         except Exception as e:
             print(f'ERROR in retrieving workspace group list: {e}') 
@@ -76,6 +84,8 @@ class GroupMigration:
         try:
             print("\nExecuting request to list account groups")
             res=requests.get(f"{self.workspace_url}/api/2.0/account/scim/v2/Groups", headers=self.headers)
+            if res.status_code != 200:
+                raise(f'Bad status code. Expected: 200. Got: {res.status_code}')
             resJson2=res.json()
             allAccountGroups = [r['displayName'] for r in resJson2['Resources']]
             allAccountGroups.sort()
