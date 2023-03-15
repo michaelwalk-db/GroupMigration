@@ -93,7 +93,7 @@ cloud='AWS'
 userName='USER-EMAIL'
 
 #Initialize GroupMigration Class with values supplied above
-gm = GroupMigration( groupL = groupL , cloud=cloud , account_id = account_id, workspace_url = workspace_url, pat=token, spark=spark, userName=userName, checkTableACL = checkTableACL, autoList = autoGenerateList)
+gm = GroupMigration( groupL = groupL , cloud=cloud , account_id = account_id, workspace_url = workspace_url, pat=token, spark=spark, userName=userName, checkTableACL = checkTableACL, autoGenerateList = autoGenerateList)
 
 # COMMAND ----------
 

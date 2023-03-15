@@ -7,7 +7,7 @@ from pyspark.sql import DataFrame, session
 
 class GroupMigration:
 
-    def __init__(self, groupL : list, cloud : str, account_id : str, workspace_url : str, pat : str, spark : session.SparkSession, userName : str, checkTableACL : False, autoList : bool = False):
+    def __init__(self, groupL : list, cloud : str, account_id : str, workspace_url : str, pat : str, spark : session.SparkSession, userName : str, checkTableACL : False, autoGenerateList : bool = False):
         self.groupL=groupL
         self.cloud=cloud    
         self.workspace_url = workspace_url.rstrip("/")
@@ -48,8 +48,8 @@ class GroupMigration:
         
         #Check if we should automatically generate list, and do it immediately.
         #Implementers Note: Could change this section to a lazy calculation by setting groupL to nil or some sentinel value and adding checks before use.
-        if(autoList) :
-            print("autoList parameter is set to TRUE. Ignoring groupL parameter and instead will automatically generate list of migraiton groups.")
+        if(autoGenerateList) :
+            print("autoGenerateList parameter is set to TRUE. Ignoring groupL parameter and instead will automatically generate list of migraiton groups.")
             self.groupL = self.findMigrationEligibleGroups()
         
         #Finish setting some params that depend on groupL
