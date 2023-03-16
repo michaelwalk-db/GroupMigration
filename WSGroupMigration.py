@@ -15,12 +15,12 @@ class GroupMigration:
         self.token=pat
         self.headers={'Authorization': 'Bearer %s' % self.token}
         self.groupList={}
-        self.groupWSGList={}
         self.accountGroups={}
         self.groupMembers={}
         self.groupEntitlements={}
         self.groupNameDict={}
-        self.groupWSGNameDict={}
+        self.groupWSGList={} #map : temp group id => temp group name
+        self.groupWSGNameDict={} #map : temp group name => temp group id
         self.groupRoles={}
         self.passwordPerm={}
         self.clusterPerm={}
@@ -56,12 +56,13 @@ class GroupMigration:
         if(len(self.groupL) == 0):
             raise Exception("Migration group list (groupL) is empty!")
         
-        self.AccGroup=["db-temp-"+g for g in self.groupL]
-        self.WSGroup=self.groupL
+        self.TempGroupNames=["db-temp-"+g for g in self.groupL]
+        self.WorkspaceGroupNames=self.groupL
         
         print(f"Successfully initialized GroupMigration class with {len(self.groupL)} workspace-local groups to migrate. Groups to migrate:")
         for i, group in enumerate(self.groupL, start=1):
             print(f"{i}. {group}")
+        print(f"Done listing {len(self.groupL)} groups to migrate.")
                     
     def findMigrationEligibleGroups(self):
         print("Begin automatic generation of all migration eligible groups.")
@@ -540,6 +541,7 @@ class GroupMigration:
     def getFolderList(self, path:str)-> dict:
         try:
             data={'path':path}
+            print(f"Requesting file list for path: {path}")
             resFolder=requests.get(f"{self.workspace_url}/api/2.0/workspace/list", headers=self.headers, data=json.dumps(data))
             resFolderJson=resFolder.json()
             folderPerm={}
@@ -552,8 +554,6 @@ class GroupMigration:
                     self.getFolderList(c['path'])
                 elif c['object_type']=="NOTEBOOK" and c['path'].startswith('/Repos') == False and c['path'].startswith('/Shared') == False:
                     self.notebookList[c['object_id']]=c['path']
-
-            return 
         except Exception as e:
             print(f'error in retriving directory details: {e}')
 
@@ -563,33 +563,36 @@ class GroupMigration:
             self.getFolderList("/")
             
             folderPerm={}
-            notebookPerm={}
-            for k,v in self.folderList.items():
-                if k.endswith('/Trash'):
+            for id,path in self.folderList.items():
+                #Skip user's Trash folders -- causes ignorable error message on azure
+                if path.startswith('/Users') and path.endswith('/Trash'):
                     continue
-                resFolderPerm=requests.get(f"{self.workspace_url}/api/2.0/permissions/directories/{k}", headers=self.headers)
+
+                resFolderPerm=requests.get(f"{self.workspace_url}/api/2.0/permissions/directories/{id}", headers=self.headers)
                 if resFolderPerm.status_code==404:
                     print(f'feature not enabled for this tier')
                     continue
                 if resFolderPerm.status_code==403:
-                    print('Error retrieving permission for '+v+ ' '+ resFolderPerm.json()['message'])
+                    print('Error retrieving permission for '+path+ ' '+ resFolderPerm.json()['message'])
                     continue
                 resFolderPermJson=resFolderPerm.json()   
                 try:
                   aclList=self.getACL(resFolderPermJson['access_control_list'])   
                 except Exception as e:
                   print(f'error in retriving folder details: {e}')
-                  #print('k: ',k)
-                  #print('v: ',v)
+                  #print('id: ',id)
+                  #print('path: ',path)
                 if len(aclList)==0:continue
-                folderPerm[k]=aclList  
-            for k,v in self.notebookList.items():
-                resNotebookPerm=requests.get(f"{self.workspace_url}/api/2.0/permissions/notebooks/{k}", headers=self.headers)
+                folderPerm[id]=aclList
+
+            notebookPerm={}
+            for id,path in self.notebookList.items():
+                resNotebookPerm=requests.get(f"{self.workspace_url}/api/2.0/permissions/notebooks/{id}", headers=self.headers)
                 if resNotebookPerm.status_code==404:
                     print(f'feature not enabled for this tier')
                     continue
                 if resNotebookPerm.status_code==403:
-                    print('Error retrieving permission for '+v+ ' '+ resNotebookPerm.json()['message'])
+                    print('Error retrieving permission for '+path+ ' '+ resNotebookPerm.json()['message'])
                     continue
                 resNotebookPermJson=resNotebookPerm.json()   
                 try:
@@ -597,7 +600,7 @@ class GroupMigration:
                 except Exception as e:
                   print(f'error in retriving notebook details: {e}')
                 if len(aclList)==0:continue
-                notebookPerm[k]=aclList  
+                notebookPerm[id]=aclList  
             return folderPerm, notebookPerm
         except Exception as e:
             print(f'error in retrieving folder permission: {e}')
@@ -636,11 +639,11 @@ class GroupMigration:
             print(f'error in retrieving repos permission: {e}')
     def getTokenACL(self)-> dict:
         try:
-            tokenPerm={}
+            tokenPerm = {}
             resTokenPerm=requests.get(f"{self.workspace_url}/api/2.0/preview/permissions/authorization/tokens", headers=self.headers)
             if resTokenPerm.status_code==404:
                 print(f'feature not enabled for this tier')
-                continue
+                return {}
             resTokenPermJson=resTokenPerm.json()   
             aclList=[]     
             for acl in resTokenPermJson['access_control_list']:
@@ -654,6 +657,7 @@ class GroupMigration:
             return tokenPerm
         except Exception as e:
             print(f'error in retrieving Token permission: {e}')
+            return {}
     def getSecretScoppeACL(self)-> dict:
         try:
 
@@ -760,10 +764,10 @@ class GroupMigration:
                 try:
                   gName=acl['group_name']
                   if level=="Workspace":
-                    if acl['group_name'] in self.WSGroup:
+                    if acl['group_name'] in self.WorkspaceGroupNames:
                       gName="db-temp-"+acl['group_name']
                   elif level=="Account":
-                    if acl['group_name'] in self.AccGroup:
+                    if acl['group_name'] in self.TempGroupNames:
                       gName=acl['group_name'][8:]
                   else:
                     gName=acl['group_name']
@@ -875,10 +879,11 @@ class GroupMigration:
     def performInventory(self, mode : str):
       try:
         if mode=="Workspace":
-          self.groupL=self.WSGroup
+          self.groupL=self.WorkspaceGroupNames
         elif mode=="Account":
-          self.groupL=self.AccGroup   
-        print('performing group inventory')
+          self.groupL=self.TempGroupNames   
+        
+        print(f'Performing group inventory with mode={mode}')
         res=requests.get(f"{self.workspace_url}/api/2.0/preview/scim/v2/Groups", headers=self.headers)
         self.groupList, self.groupMembers, self.groupEntitlements, self.groupRoles=self.getGroupObjects()
         groupNames=[v for k,v in self.groupList.items()]
@@ -924,10 +929,8 @@ class GroupMigration:
       except Exception as e:
         print(f" Error creating group inventory, {e}")
     
-    def dryRun(self):
-      try:
-        self.performInventory('Workspace')        
-        print('Displaying existing ACL of the selected groups:')
+    def printInventory(self):
+        print('Displaying Inventory Results -- ACLs of selected groups:')
         print('Group List:')
         print("{:<20} {:<10}".format('Group ID', 'Group Name'))
         for key, value in self.groupList.items():print("{:<20} {:<10}".format(key, value))
@@ -995,9 +998,11 @@ class GroupMigration:
         if self.checkTableACL==True:
           print('TableACL  Permission:')
           for item in self.dataObjectsPerm:print(item)
-        
-      except Exception as e:
-        print(f" Error getting group permission, {e}")
+
+    def dryRun(self):
+        self.performInventory('Workspace')        
+        self.printInventory()
+
     def applyGroupPermission(self, level:str ):
       try:
         
@@ -1070,6 +1075,7 @@ class GroupMigration:
       try:
         if self.validateWSGroup()==0: return
         self.performInventory('Workspace')
+
         for g in self.groupL:
           memberList=[]
           if self.groupNameDict[g] in self.groupMembers:
@@ -1096,7 +1102,7 @@ class GroupMigration:
         res=requests.get(f"{self.workspace_url}/api/2.0/account/scim/v2/Groups", headers=self.headers)
         for grp in res.json()['Resources']:
           self.accountGroups[grp['displayName']]=grp['id']
-        for g in self.WSGroup:
+        for g in self.WorkspaceGroupNames:
           if g not in self.accountGroups:
             print(f"group {g} is not present in account level, please add correct group and try again")
             return 1
@@ -1111,7 +1117,7 @@ class GroupMigration:
         data={
                   "permissions": ["USER"]
               }
-        for g in self.WSGroup:     
+        for g in self.WorkspaceGroupNames:     
           res=requests.put(f"{self.workspace_url}/api/2.0/preview/permissionassignments/principals/{self.accountGroups[g]}", headers=self.headers, data=json.dumps(data))
         self.applyGroupPermission("Account")
         #self.deleteGroups("Account")
