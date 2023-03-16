@@ -87,8 +87,8 @@ class GroupMigration:
                         entms.append(ent['value'])
                 except:
                     pass
-                if len(entms)==0:
-                    continue
+                #if len(entms)==0:
+                #    continue
                 if e['displayName'] in self.groupL:
                   groupEntitlements[e['id']]=entms
                 entms=[]
@@ -146,6 +146,7 @@ class GroupMigration:
             resC=requests.get(f"{self.workspace_url}/api/2.0/clusters/list", headers=self.headers)
             resCJson=resC.json()
             clusterPerm={}
+            if(len(resCJson)==0):return {}
             for c in resCJson['clusters']:
                 clusterId=c['cluster_id']
                 resCPerm=requests.get(f"{self.workspace_url}/api/2.0/preview/permissions/clusters/{clusterId}", headers=self.headers)
@@ -374,7 +375,18 @@ class GroupMigration:
                     return {}
                 for c in resExpJson['experiments']:                    
                     expID=c['experiment_id']
-                    resExpPerm=requests.get(f"{self.workspace_url}/api/2.0/permissions/experiments/{expID}", headers=self.headers)
+                    #print(c)
+                    
+                    for k in c['tags']:
+                      if k['key']=='mlflow.experimentType':
+                        
+                        if k['value']=='NOTEBOOK':
+                          #print('notebook')
+                          resExpPerm=requests.get(f"{self.workspace_url}/api/2.0/permissions/notebooks/{expID}", headers=self.headers)
+                        else:
+                          #print('experiment')
+                          resExpPerm=requests.get(f"{self.workspace_url}/api/2.0/permissions/experiments/{expID}", headers=self.headers)
+                    #resExpPerm=requests.get(f"{self.workspace_url}/api/2.0/permissions/experiments/{expID}", headers=self.headers)
                     if resExpPerm.status_code==404:
                         print(f'feature not enabled for this tier')
                         pass
