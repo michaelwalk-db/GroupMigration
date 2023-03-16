@@ -71,16 +71,13 @@
 from WSGroupMigration import GroupMigration
 groupL=['analyst', 'dataengineer']
 
-account_id="eba75ab2-8e9a-45c9-9d20-91a112a9de67"
+account_id=""
 
-account_id="e6e8162c-a42f-43a0-af86-312058795a14"
-workspace_url = 'https://dbc-af13a322-bce4.staging.cloud.databricks.com'
-workspace_url = 'https://e2-demo-field-eng.cloud.databricks.com'
+workspace_url = ''
 
 
 
-token='dapibe61f012f07a3b282eff4e6fab360701'
-token='dapi189134c6ccbf5d9353665d6f8ae9d7d0'
+token=''
 
 
 checkTableACL=False
@@ -92,50 +89,6 @@ gm=GroupMigration( groupL = groupL , cloud="AWS" , account_id = account_id, work
 # MAGIC #### Step 2: Perform Dry run
 # MAGIC This steps performs a dry run to verify the current ACL on the supplied workspace groups and print outs the permission.
 # MAGIC Please verify if all the permissions are covered 
-
-# COMMAND ----------
-
-gm.groupList, gm.groupMembers, gm.groupEntitlements, gm.groupRoles=gm.getGroupObjects()
-
-# COMMAND ----------
-
-import requests
-expID='803772768410606'
-resExpPerm=requests.get(f"{gm.workspace_url}/api/2.0/permissions/experiments/{expID}", headers=gm.headers)
-resExpPerm=requests.get(f"{gm.workspace_url}/api/2.0/permissions/notebooks/{expID}", headers=gm.headers)
-
-# COMMAND ----------
-
-
-
-# COMMAND ----------
-
-import json
-data={'experiment_id':expID}
-resExp=requests.get(f"{gm.workspace_url}/api/2.0/mlflow/experiments/get", headers=gm.headers,data=json.dumps(data))
-
-# COMMAND ----------
-
-for k in resExp.json()['experiment']['tags']:
-  if k['key']=='mlflow.experimentType':
-    print(k)
-    if k['value']=='NOTEBOOK':
-      print('notebook')
-    else:
-      print('experiment')
-    
-
-# COMMAND ----------
-
-resExp.text
-
-# COMMAND ----------
-
-resExpPerm.json
-
-# COMMAND ----------
-
-gm.expPerm=gm.getExperimentACL()
 
 # COMMAND ----------
 

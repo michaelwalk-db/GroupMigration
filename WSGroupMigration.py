@@ -188,6 +188,7 @@ class GroupMigration:
             resW=requests.get(f"{self.workspace_url}/api/2.0/sql/warehouses", headers=self.headers)
             resWJson=resW.json()
             warehousePerm={}
+            if(len(resWJson)==0):return {}
             for c in resWJson['warehouses']:
                 warehouseId=c['id']
                 resWPerm=requests.get(f"{self.workspace_url}/api/2.0/preview/permissions/sql/warehouses/{warehouseId}", headers=self.headers)
