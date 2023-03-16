@@ -104,7 +104,7 @@ gm = GroupMigration( groupL = groupL , cloud=cloud , account_id = account_id, wo
 
 # COMMAND ----------
 
-gm.dryRun(groupL)
+gm.dryRun()
 
 # COMMAND ----------
 
@@ -117,7 +117,7 @@ gm.dryRun(groupL)
 
 # COMMAND ----------
 
-gm.createBackupGroup(groupL)
+gm.createBackupGroup()
 
 # COMMAND ----------
 

@@ -159,7 +159,7 @@ class GroupMigration:
                     for ent in e['entitlements']:
                         entms.append(ent['value'])
                 except:
-                    pass
+                    continue
                 if len(entms)==0:
                     continue
                 if e['displayName'] in self.groupL:
@@ -170,7 +170,7 @@ class GroupMigration:
                       for ent in e['roles']:
                           entms.append(ent['value'])
                   except:
-                      pass
+                      continue
                   if len(entms)==0:
                     continue
                   if e['displayName'] in self.groupL:
@@ -224,7 +224,7 @@ class GroupMigration:
                 resCPerm=requests.get(f"{self.workspace_url}/api/2.0/preview/permissions/clusters/{clusterId}", headers=self.headers)
                 if resCPerm.status_code==404:
                     print(f'cluster ACL not enabled for the cluster: {clusterId}')
-                    pass
+                    continue
                 resCPermJson=resCPerm.json()            
                 aclList=self.getACL(resCPermJson['access_control_list'])
                 if len(aclList)==0:continue
@@ -246,7 +246,7 @@ class GroupMigration:
                 resCPPerm=requests.get(f"{self.workspace_url}/api/2.0/preview/permissions/cluster-policies/{policyid}", headers=self.headers)
                 if resCPPerm.status_code==404:
                     print(f'cluster policy feature is not enabled for this tier.')
-                    pass
+                    continue
                 resCPPermJson=resCPPerm.json()            
                 aclList=self.getACL(resCPPermJson['access_control_list'])
                 if len(aclList)==0:continue
@@ -265,7 +265,7 @@ class GroupMigration:
                 resWPerm=requests.get(f"{self.workspace_url}/api/2.0/preview/permissions/sql/warehouses/{warehouseId}", headers=self.headers)
                 if resWPerm.status_code==404:
                     print(f'feature not enabled for this tier')
-                    pass
+                    continue
                 resWPermJson=resWPerm.json()            
                 aclList=self.getACL(resWPermJson['access_control_list'])                   
                 if len(aclList)==0:continue
@@ -291,7 +291,7 @@ class GroupMigration:
                     resDPerm=requests.get(f"{self.workspace_url}/api/2.0/preview/sql/permissions/dashboards/{dashboardId}", headers=self.headers)
                     if resDPerm.status_code==404:
                         print(f'feature not enabled for this tier')
-                        pass
+                        continue
                     resDPermJson=resDPerm.json() 
                     aclList=resDPermJson['access_control_list']       
                     if len(aclList)==0:continue
@@ -323,7 +323,7 @@ class GroupMigration:
                     resQPerm=requests.get(f"{self.workspace_url}/api/2.0/preview/sql/permissions/queries/{queryId}", headers=self.headers)
                     if resQPerm.status_code==404:
                         print(f'feature not enabled for this tier')
-                        pass
+                        continue
                     resQPermJson=resQPerm.json() 
                     aclList=resQPermJson['access_control_list']  
                     if len(aclList)==0:continue
@@ -348,7 +348,7 @@ class GroupMigration:
                 resAPerm=requests.get(f"{self.workspace_url}/api/2.0/preview/sql/permissions/alerts/{alertId}", headers=self.headers)
                 if resAPerm.status_code==404:
                     print(f'feature not enabled for this tier')
-                    pass
+                    continue
                 resAPermJson=resAPerm.json() 
                 aclList=resAPermJson['access_control_list']               
                 if len(aclList)==0:continue
@@ -393,7 +393,7 @@ class GroupMigration:
                 resIPPerm=requests.get(f"{self.workspace_url}/api/2.0/preview/permissions/instance-pools/{instancePID}", headers=self.headers)
                 if resIPPerm.status_code==404:
                     print(f'feature not enabled for this tier')
-                    pass
+                    continue
                 resIPPermJson=resIPPerm.json()   
                 aclList=self.getACL(resIPPermJson['access_control_list'])            
                 if len(aclList)==0:continue
@@ -419,7 +419,7 @@ class GroupMigration:
                     resJobPerm=requests.get(f"{self.workspace_url}/api/2.0/permissions/jobs/{jobID}", headers=self.headers)
                     if resJobPerm.status_code==404:
                         print(f'feature not enabled for this tier')
-                        pass
+                        continue
                     resJobPermJson=resJobPerm.json()   
                     aclList=self.getACL(resJobPermJson['access_control_list'])                
                     if len(aclList)==0:continue
@@ -450,7 +450,7 @@ class GroupMigration:
                     resExpPerm=requests.get(f"{self.workspace_url}/api/2.0/permissions/experiments/{expID}", headers=self.headers)
                     if resExpPerm.status_code==404:
                         print(f'feature not enabled for this tier')
-                        pass
+                        continue
                     resExpPermJson=resExpPerm.json()   
                     if resExpPerm.status_code!=200:
                       print(f'unable to get permission for experiment {expID}')
@@ -490,7 +490,7 @@ class GroupMigration:
                     resModelPerm=requests.get(f"{self.workspace_url}/api/2.0/permissions/registered-models/{modelID}", headers=self.headers)
                     if resModelPerm.status_code==404:
                         print(f'feature not enabled for this tier')
-                        pass
+                        continue
                     resModelPermJson=resModelPerm.json()   
                     aclList=self.getACL(resModelPermJson['access_control_list'])                
                     if len(aclList)==0:continue
@@ -522,7 +522,7 @@ class GroupMigration:
                     resDltPerm=requests.get(f"{self.workspace_url}/api/2.0/permissions/pipelines/{dltID}", headers=self.headers)
                     if resDltPerm.status_code==404:
                         print(f'feature not enabled for this tier')
-                        pass
+                        continue
                     resDltPermJson=resDltPerm.json()   
                     aclList=self.getACL(resDltPermJson['access_control_list'])
                     if len(aclList)==0:continue
@@ -565,16 +565,17 @@ class GroupMigration:
             folderPerm={}
             notebookPerm={}
             for k,v in self.folderList.items():
+                if k.endswith('/Trash'):
+                    continue
                 resFolderPerm=requests.get(f"{self.workspace_url}/api/2.0/permissions/directories/{k}", headers=self.headers)
                 if resFolderPerm.status_code==404:
                     print(f'feature not enabled for this tier')
-                    pass
+                    continue
                 if resFolderPerm.status_code==403:
-                  print('Error retrieving permission for '+v+ ' '+ resFolderPerm.json()['message'])
-                  pass
+                    print('Error retrieving permission for '+v+ ' '+ resFolderPerm.json()['message'])
+                    continue
                 resFolderPermJson=resFolderPerm.json()   
                 try:
-                  
                   aclList=self.getACL(resFolderPermJson['access_control_list'])   
                 except Exception as e:
                   print(f'error in retriving folder details: {e}')
@@ -586,10 +587,10 @@ class GroupMigration:
                 resNotebookPerm=requests.get(f"{self.workspace_url}/api/2.0/permissions/notebooks/{k}", headers=self.headers)
                 if resNotebookPerm.status_code==404:
                     print(f'feature not enabled for this tier')
-                    pass
+                    continue
                 if resNotebookPerm.status_code==403:
-                  print('Error retrieving permission for '+v+ ' '+ resNotebookPerm.json()['message'])
-                  pass
+                    print('Error retrieving permission for '+v+ ' '+ resNotebookPerm.json()['message'])
+                    continue
                 resNotebookPermJson=resNotebookPerm.json()   
                 try:
                   aclList=self.getACL(resNotebookPermJson['access_control_list'])
@@ -620,7 +621,7 @@ class GroupMigration:
                     resRepoPerm=requests.get(f"{self.workspace_url}/api/2.0/permissions/repos/{repoID}", headers=self.headers)
                     if resRepoPerm.status_code==404:
                         print(f'feature not enabled for this tier')
-                        pass
+                        continue
                     resRepoPermJson=resRepoPerm.json()   
                     aclList=self.getACL3(resRepoPermJson['access_control_list'])
                     if len(aclList)==0:continue
@@ -639,7 +640,7 @@ class GroupMigration:
             resTokenPerm=requests.get(f"{self.workspace_url}/api/2.0/preview/permissions/authorization/tokens", headers=self.headers)
             if resTokenPerm.status_code==404:
                 print(f'feature not enabled for this tier')
-                pass
+                continue
             resTokenPermJson=resTokenPerm.json()   
             aclList=[]     
             for acl in resTokenPermJson['access_control_list']:
@@ -659,19 +660,28 @@ class GroupMigration:
             resSScope=requests.get(f"{self.workspace_url}/api/2.0/secrets/scopes/list", headers=self.headers)
             resSScopeJson=resSScope.json()
             if len(resSScopeJson)==0:
-                print('No secret scopes defined.')
-                return {}
+                raise Exception('No secret scopes defined.')
+
             secretScopePerm={}
             for c in resSScopeJson['scopes']:
                 scopeName=c['name']
                 data={'scope':scopeName}
                 resSSPerm=requests.get(f"{self.workspace_url}/api/2.0/secrets/acls/list/", headers=self.headers, data=json.dumps(data))  
+                
                 if resSSPerm.status_code==404:
                     print(f'feature not enabled for this tier')
-                    pass
-                resSSPermJson=resSSPerm.json()   
-                aclList=[]
+                    continue
+                if resSSPerm.status_code!=200:
+                    print(f'Error retrieving ACL for Secret Scope: {scopeName}. HTTP Status Code {resSSPerm.status_code}')
+                    continue
 
+                resSSPermJson=resSSPerm.json()
+                if not 'items' in resSSPermJson:
+                    #print(f'ACL for Secret Scope  {scopeName} missing "items" key. Contents:\n{resSSPermJson}\nSkipping...')
+                    #This seems to be expected behaviour if there are no ACLs, silently ignore
+                    continue
+
+                aclList=[]
                 for acl in resSSPermJson['items']:
                     try:
                         if acl['principal'] in self.groupL:
@@ -679,7 +689,7 @@ class GroupMigration:
                     except KeyError:
                         continue
                 if len(aclList)==0:continue
-                secretScopePerm[scopeName]=aclList    
+                secretScopePerm[scopeName]=aclList  
 
             return secretScopePerm
         except Exception as e:
@@ -913,7 +923,8 @@ class GroupMigration:
 
       except Exception as e:
         print(f" Error creating group inventory, {e}")
-    def dryRun(self, groupList:list ):
+    
+    def dryRun(self):
       try:
         self.performInventory('Workspace')        
         print('Displaying existing ACL of the selected groups:')
@@ -1054,7 +1065,8 @@ class GroupMigration:
           res=requests.delete(f"{self.workspace_url}/api/2.0/preview/scim/v2/Groups/{gID}", headers=self.headers)
       except Exception as e:
         print(f" Error deleting groups , {e}")
-    def createBackupGroup(self, groupL:list):
+
+    def createBackupGroup(self):
       try:
         if self.validateWSGroup()==0: return
         self.performInventory('Workspace')
