@@ -14,12 +14,12 @@ class GroupMigration:
         self.account_id=account_id
         self.token=pat
         self.headers={'Authorization': 'Bearer %s' % self.token}
-        self.groupList={}
+        self.groupIdDict={} #map: group id => group name
+        self.groupNameDict={} #map: group name => group id
         self.accountGroups={}
-        self.groupMembers={}
+        self.groupMembers={} #map: group id => list[tuple[member name, memberid]]
         self.groupEntitlements={}
-        self.groupNameDict={}
-        self.groupWSGList={} #map : temp group id => temp group name
+        self.groupWSGIdDict={} #map : temp group id => temp group name
         self.groupWSGNameDict={} #map : temp group name => temp group id
         self.groupRoles={}
         self.passwordPerm={}
@@ -135,26 +135,32 @@ class GroupMigration:
         except Exception as e:
             print(f'error in retrieving group objects : {e}')
             
-    def getGroupObjects(self)->list:
+    def getGroupObjects(self, groupFilterKeeplist)->list:
         try:
-            groupList={}
+            groupIdDict={}
             groupMembers={}
             groupEntitlements={}
             groupRoles={}
             res=requests.get(f"{self.workspace_url}/api/2.0/preview/scim/v2/Groups", headers=self.headers)
             resJson=res.json()
+            #print(groupList)
+
             for e in resJson['Resources']:
-                if e['displayName'] in self.groupL:
-                  groupList[e['id']]=e['displayName']
+                if not e['displayName'] in groupFilterKeeplist:
+                    continue
+
+                groupIdDict[e['id']]=e['displayName']
+
+                #Get Group Members
                 members=[]
-                #print(groupList)
                 try:
                     for mem in e['members']:
                         members.append(list([mem['display'],mem['value']]))
                 except KeyError:
                     continue
-                if e['displayName'] in self.groupL:
-                  groupMembers[e['id']]=members
+                groupMembers[e['id']]=members
+
+                #Get entitlements
                 entms=[]
                 try:
                     for ent in e['entitlements']:
@@ -163,23 +169,33 @@ class GroupMigration:
                     continue
                 if len(entms)==0:
                     continue
-                if e['displayName'] in self.groupL:
-                  groupEntitlements[e['id']]=entms
-                entms=[]
+                groupEntitlements[e['id']]=entms
+                
+                #Get Roles (AWS only)
                 if self.cloud=='AWS':
-                  try:
-                      for ent in e['roles']:
-                          entms.append(ent['value'])
-                  except:
-                      continue
-                  if len(entms)==0:
-                    continue
-                  if e['displayName'] in self.groupL:
-                    groupRoles[e['id']]=entms   
-            return [groupList, groupMembers, groupEntitlements, groupRoles]
+                    entms=[]
+                    try:
+                        for ent in e['roles']:
+                            entms.append(ent['value'])
+                    except:
+                        continue
+                    if len(entms)==0:
+                        continue
+                    groupRoles[e['id']]=entms
+            
+            #Finally assign to self (Now that exception hasn't been thrown)
+            self.groupIdDict = groupIdDict
+            self.groupMembers = groupMembers
+            self.groupEntitlements = groupEntitlements
+            self.groupRoles = groupRoles
+            #Create reverse of groupIdDict
+            self.groupNameDict = {}
+            for k,v in self.groupIdDict.items():
+                self.groupNameDict[v]=k
+            
         except Exception as e:
             print(f'error in retrieving group objects : {e}')
-
+        
 
     def getACL(self, acls:dict)->list:
         aclList=[]
@@ -705,9 +721,9 @@ class GroupMigration:
             for group_id, etl in groupEntitlements.items():
                 entitlementList=[]
                 if level=="Workspace":
-                  groupId=self.groupWSGNameDict["db-temp-"+self.groupList[group_id]]
+                  groupId=self.groupWSGNameDict["db-temp-"+self.groupIdDict[group_id]]
                 else:
-                  groupId=self.accountGroups[self.groupList[group_id][8:]]
+                  groupId=self.accountGroups[self.groupIdDict[group_id][8:]]
                 #print(groupId)
                 for e in etl:
                     entitlementList.append({"value":e})
@@ -726,9 +742,9 @@ class GroupMigration:
             for group_id, roles in self.groupRoles.items():
                 roleList=[]
                 if level=="Workspace":
-                  groupId=self.groupWSGNameDict["db-temp-"+self.groupList[group_id]]
+                  groupId=self.groupWSGNameDict["db-temp-"+self.groupIdDict[group_id]]
                 else:
-                  groupId=self.accountGroups[self.groupList[group_id][8:]]
+                  groupId=self.accountGroups[self.groupIdDict[group_id][8:]]
                 for e in roles:
                     roleList.append({"value":e})
                 instanceProfileRoles = {
@@ -876,19 +892,23 @@ class GroupMigration:
                 self.spark.sql(aclQuery)
         except Exception as e:
             print(f'Error setting permission, {e} ')
-    def performInventory(self, mode : str):
-      try:
+
+
+    def setGroupListForMode(self, mode : str) :
+        print(f'Retrieving group metadata for mode: {mode}')
         if mode=="Workspace":
           self.groupL=self.WorkspaceGroupNames
+          self.getGroupObjects(self.groupL)
         elif mode=="Account":
           self.groupL=self.TempGroupNames   
-        
-        print(f'Performing group inventory with mode={mode}')
-        res=requests.get(f"{self.workspace_url}/api/2.0/preview/scim/v2/Groups", headers=self.headers)
-        self.groupList, self.groupMembers, self.groupEntitlements, self.groupRoles=self.getGroupObjects()
-        groupNames=[v for k,v in self.groupList.items()]
-        for k,v in self.groupList.items():
-          self.groupNameDict[v]=k    
+          self.getGroupObjects(self.groupL)        
+        else:
+            raise ValueError(f"mode {mode} not supported. Valid values are 'Workspace' and 'Account'")
+    
+    def performInventory(self, mode : str):
+      print(f'Performing group inventory.')
+      try:
+        self.setGroupListForMode(mode)
         if self.cloud=="AWS":
           print('performing password inventory')
           self.passwordPerm= self.getPasswordACL()
@@ -933,7 +953,7 @@ class GroupMigration:
         print('Displaying Inventory Results -- ACLs of selected groups:')
         print('Group List:')
         print("{:<20} {:<10}".format('Group ID', 'Group Name'))
-        for key, value in self.groupList.items():print("{:<20} {:<10}".format(key, value))
+        for key, value in self.groupIdDict.items():print("{:<20} {:<10}".format(key, value))
         print('Group Members:')
         print("{:<20} {:<100}".format('Group ID', 'Group Member'))
         for key, value in self.groupMembers.items():print("{:<20} {:<100}".format(key, str(value)))
@@ -1051,6 +1071,7 @@ class GroupMigration:
         
       except Exception as e:
         print(f" Error applying group permission, {e}")
+
     def validateTempWSGroup(self)->list:
         try:
             res=requests.get(f"{self.workspace_url}/api/2.0/preview/scim/v2/Groups", headers=self.headers)
@@ -1063,14 +1084,36 @@ class GroupMigration:
             return 1
         except Exception as e:
             print(f'error validating WS group objects : {e}')
-    def deleteGroups(self, mode:str):
-      try:
-        for g in self.groupL:
-          gID=self.groupNameDict[g]
-          res=requests.delete(f"{self.workspace_url}/api/2.0/preview/scim/v2/Groups/{gID}", headers=self.headers)
-      except Exception as e:
-        print(f" Error deleting groups , {e}")
+    
+    def bulkTryDelete(self, deleteList):
+        for g in deleteList:
+            gID = self.groupNameDict[g]
+            print(f"Attempting to delete group [{gID}] - {g}")
+            try:
+                res = requests.delete(f"{self.workspace_url}/api/2.0/preview/scim/v2/Groups/{gID}", headers=self.headers)
+            except Exception as deleteError:
+                print("ERROR - Failed to delete group [{gID}] - {g}. ErrorMessage: {deleteError}")
+                pass
+            else:
+                print(f"SUCCESS - Deleted group [{gID}] - {g}")
 
+    def deleteWorkspaceLocalGroups(self):
+      try:
+        self.setGroupListForMode("Workspace")
+        if self.validateTempWSGroup() == 0:
+            print("temp group validation failed, aborting deletion")
+            return;
+        self.bulkTryDelete(self.groupL)
+      except Exception as e:
+        print(f"Error deleting groups : {e}")
+    
+    def deleteTempGroups(self):
+      self.setGroupListForMode("Account")
+      try:
+        self.bulkTryDelete(self.groupL)
+      except Exception as e:
+        print(f"Error deleting temp groups : {e}")
+      
     def createBackupGroup(self):
       try:
         if self.validateWSGroup()==0: return
@@ -1090,10 +1133,9 @@ class GroupMigration:
           if res.status_code == 409:
             print(f'group with name "db-temp-"{g} already present, please delete and try again.')
             continue                       
-          self.groupWSGList[res.json()["id"]]="db-temp-"+g
+          self.groupWSGIdDict[res.json()["id"]]="db-temp-"+g
           self.groupWSGNameDict["db-temp-"+g]=res.json()["id"]
         self.applyGroupPermission("Workspace")
-        #self.deleteGroups("Workspace")
       except Exception as e:
         print(f" Error creating backup groups , {e}")
     
@@ -1109,6 +1151,7 @@ class GroupMigration:
         return 0
       except Exception as e:
         print(f" Error validating account level group, {e}")
+    
     def createAccountGroup(self):
       try:
         if self.validateAccountGroup()==1: return
@@ -1120,7 +1163,6 @@ class GroupMigration:
         for g in self.WorkspaceGroupNames:     
           res=requests.put(f"{self.workspace_url}/api/2.0/preview/permissionassignments/principals/{self.accountGroups[g]}", headers=self.headers, data=json.dumps(data))
         self.applyGroupPermission("Account")
-        #self.deleteGroups("Account")
 
       except Exception as e:
         print(f" Error creating account level group, {e}")

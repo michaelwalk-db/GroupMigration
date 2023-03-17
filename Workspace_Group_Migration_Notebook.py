@@ -129,7 +129,7 @@ gm.createBackupGroup()
 
 # COMMAND ----------
 
-gm.deleteGroups("Workspace")
+gm.deleteWorkspaceLocalGroups()
 
 # COMMAND ----------
 
@@ -155,7 +155,7 @@ gm.createAccountGroup()
 
 # COMMAND ----------
 
-gm.deleteGroups("Account")
+gm.deleteTempGroups()
 
 # COMMAND ----------
 
