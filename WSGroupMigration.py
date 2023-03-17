@@ -5,6 +5,7 @@ from pyspark.sql.functions import lit,col,column
 from functools import reduce
 from pyspark.sql import DataFrame, session
 import concurrent.futures
+import time
 
 class GroupMigration:
 
@@ -720,9 +721,13 @@ class GroupMigration:
 
     def getSingleFolderList(self, path:str, depth:int) -> dict:
         MAX_RETRY = 5
+        RETRY_DELAY = 500 / 1000
         retry_count = 0
         lastError = ''
         while retry_count < MAX_RETRY:
+            #Give some time for the server to recover
+            if retry_count > 0:
+                time.sleep(RETRY_DELAY)
             if self.verbose:
                 print(f"[Verbose] Requesting file list for Depth {depth} Retry {retry_count} Path: {path}")
             retry_count = retry_count + 1
@@ -730,6 +735,9 @@ class GroupMigration:
                 data={'path':path}
                 resFolder=requests.get(f"{self.workspace_url}/api/2.0/workspace/list", headers=self.headers, data=json.dumps(data))
                 resFolderJson=resFolder.json()
+                if resFolder.status_code == 403:
+                    print(f'[ERROR] status code 403 permission denied to read folder {path}.')
+                    return (path, {}, {})
                 if resFolder.status_code != 200:
                     print(f'[ERROR] bad status code for folder {path}. code: {resFolder.status_code}')
                     continue
@@ -740,7 +748,7 @@ class GroupMigration:
                     return (path, subFolders, notebooks)
                 
                 for c in resFolderJson['objects']:
-                    if c['object_type']=="DIRECTORY" and c['path'].startswith('/Repos') == False and c['path'].startswith('/Shared') == False:
+                    if c['object_type']=="DIRECTORY" and c['path'].startswith('/Repos') == False and c['path'].startswith('/Shared') == False and c['path'].endswith('/Trash') == False:
                         subFolders[c['object_id']] = c['path']
                     elif c['object_type']=="NOTEBOOK" and c['path'].startswith('/Repos') == False and c['path'].startswith('/Shared') == False:
                         notebooks[c['object_id']] = c['path']
