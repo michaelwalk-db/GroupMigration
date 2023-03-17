@@ -1018,11 +1018,16 @@ class GroupMigration:
         except Exception as e:
             print(f'Error setting permission for scope {object_id}. {e} ')
     
-    def getDataObjectsACL(self)-> list:
-      dbs = self.spark.sql("show databases")
-      aclList = []
-      try:
+    def runVerboseSql(self, queryString):
+        if self.verbose:
+            print(f'[Verbose] SQL: {queryString}')
+        return self.spark.sql(queryString)
 
+    def getDataObjectsACL(self)-> list:
+      dbs = self.runVerboseSql("show databases")
+      aclList = []
+      aclFinalList = []
+      try:
         for db in dbs.collect():
           databaseName = ""
 
@@ -1030,18 +1035,18 @@ class GroupMigration:
           #databaseName = 'default'
 
           # append the database df to the list
-          df=(self.spark.sql("SHOW GRANT ON DATABASE {}".format(databaseName))
+          df=(self.runVerboseSql("SHOW GRANT ON DATABASE {}".format(databaseName))
                          .withColumn("ObjectKey", lit(databaseName))
                          .withColumn("ObjectType", lit("DATABASE"))
                          .filter(col("ActionType")!="OWN")
              )
           aclList=df.collect()
-          tables = self.spark.sql("show tables in {}".format(databaseName)).filter(col("isTemporary") == False)
+          tables = self.runVerboseSql("show tables in {}".format(databaseName)).filter(col("isTemporary") == False)
           for table in tables.collect():
             try:
               #print(table)
               #if table.tableName=='testtable': continue
-              dft=(self.spark.sql("show grant on table {}.`{}`".format(table.database, table.tableName))
+              dft=(self.runVerboseSql("show grant on table {}.`{}`".format(table.database, table.tableName))
                              .withColumn("ObjectKey", lit("`" + table.database + "`.`" + table.tableName + "`"))
                              .withColumn("ObjectType", lit("TABLE"))
                             )
@@ -1050,11 +1055,11 @@ class GroupMigration:
               print(f'error retriving acl for table {table.tableName}.')
             #break
 
-          views = self.spark.sql("show views in {}".format(databaseName)).filter(col("isTemporary") == False)
+          views = self.runVerboseSql("show views in {}".format(databaseName)).filter(col("isTemporary") == False)
           for view in views.collect():
             try:
               
-              dft=(self.spark.sql("show grant on view {}.`{}`".format(view.namespace, view.viewName))
+              dft=(self.runVerboseSql("show grant on view {}.`{}`".format(view.namespace, view.viewName))
                              .withColumn("ObjectKey", lit("`" + view.namespace + "`.`" + view.viewName + "`"))
                              .withColumn("ObjectType", lit("VIEW"))
                             )
@@ -1063,11 +1068,11 @@ class GroupMigration:
               print(f'error retriving acl for view {view.viewName}.')
             #break
 
-          functions = self.spark.sql("show functions in {}".format(databaseName)).filter(col("function").startswith('spark_catalog.'+databaseName+"."))
+          functions = self.runVerboseSql("show functions in {}".format(databaseName)).filter(col("function").startswith('spark_catalog.'+databaseName+"."))
           for function in functions.collect():
             try:
               
-              dft=(self.spark.sql("show grant on function `{}`".format( function.function))
+              dft=(self.runVerboseSql("show grant on function `{}`".format( function.function))
                              .withColumn("ObjectKey", lit("`" + function.function + "`"))
                              .withColumn("ObjectType", lit("FUNCTION"))
                             )
@@ -1076,7 +1081,7 @@ class GroupMigration:
               print(f'error retriving acl for function {function.function}.')
             #break
           break
-        dft=(self.spark.sql("show grant on any file ")
+        dft=(self.runVerboseSql("show grant on any file ")
                        .withColumn("ObjectKey", lit("ANY FILE"))
                        .withColumn("ObjectType", lit(""))
                       )
@@ -1097,7 +1102,7 @@ class GroupMigration:
                   gName=acl.Principal[8:]
                 aclQuery = "GRANT {} ON {} {} TO `{}`".format(acl.ActionType, acl.ObjectType, acl.ObjectKey, gName)
                 #print(aclQuery)
-                self.spark.sql(aclQuery)
+                self.runVerboseSql(aclQuery)
         except Exception as e:
             print(f'Error setting permission, {e} ')
 
