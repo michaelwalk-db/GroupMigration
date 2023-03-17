@@ -1024,11 +1024,13 @@ class GroupMigration:
         return self.spark.sql(queryString)
 
     def getDataObjectsACL(self)-> list:
-      dbs = self.runVerboseSql("show databases")
+      dbs = self.runVerboseSql("show databases").collect()
+      print(f'Got {len(dbs)} dbs to query')
+
       aclList = []
       aclFinalList = []
       try:
-        for db in dbs.collect():
+        for db in dbs:
           databaseName = ""
 
           databaseName = db.databaseName
@@ -1080,7 +1082,7 @@ class GroupMigration:
             except Exception as e:
               print(f'error retriving acl for function {function.function}.')
             #break
-          break
+
         dft=(self.runVerboseSql("show grant on any file ")
                        .withColumn("ObjectKey", lit("ANY FILE"))
                        .withColumn("ObjectType", lit(""))
