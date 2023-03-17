@@ -393,40 +393,65 @@ class GroupMigration:
         print(f"ERROR: Retry limit of {RETRY_LIMIT} exceeded requesting dashboard id {dashboardId}")
         return []  # if retry limit exceeded, return empty list
     
-    def getQueriesACL(self)-> dict:
-        print('performing queries inventory')
-
+    def getAllQueriesACL(self, verbose=False) -> dict:
+        print('Performing query inventory ...')
         try:
-            resQ=requests.get(f"{self.workspace_url}/api/2.0/preview/sql/queries", headers=self.headers)
-            resQJson=resQ.json()
-            queryPerm={}
-            pages=math.ceil(resQJson['count']/resQJson['page_size'])
-            #print(str(pages))
-            for pg in range(1,pages+1):
-                #print(str(pg))
-                resQ=requests.get(f"{self.workspace_url}/api/2.0/preview/sql/queries?page={str(pg)}", headers=self.headers)
-                resQJson=resQ.json()    
-                for c in resQJson['results']:
-                    queryId=c['id']
-                    resQPerm=requests.get(f"{self.workspace_url}/api/2.0/preview/sql/permissions/queries/{queryId}", headers=self.headers)
-                    if resQPerm.status_code==404:
-                        print(f'feature not enabled for this tier')
-                        continue
-                    resQPermJson=resQPerm.json() 
-                    aclList=resQPermJson['access_control_list']  
-                    if len(aclList)==0:continue
-                    for acl in aclList:
-                      try:
-                        if acl['group_name'] in self.groupL:
-                          queryPerm[queryId]=aclList  
-                          break
-                      except KeyError:
-                        continue
+            resQ = requests.get(f"{self.workspace_url}/api/2.0/preview/sql/queries", headers=self.headers)
+            resQJson = resQ.json()
+            pages = math.ceil(resQJson['count'] / resQJson['page_size'])
+
+            queryPerm = {}
+            for pg in range(1, pages + 1):
+                if self.verbose:
+                    print(f"[Verbose] Requesting query page {pg}...")
+                resQ = requests.get(f"{self.workspace_url}/api/2.0/preview/sql/queries?page={str(pg)}", headers=self.headers)
+                resQJson = resQ.json()
+                results = resQJson['results']
+                with concurrent.futures.ThreadPoolExecutor(max_workers=self.numThreads) as executor:
+                    future_query_perms = {executor.submit(self.getSingleQueryACL, query['id']): query['id'] for query in results}
+                    for future in concurrent.futures.as_completed(future_query_perms):
+                        query_id = future_query_perms[future]
+                        try:
+                            result = future.result()
+                            if len(result) > 0:
+                                queryPerm[query_id] = result[1]
+                        except Exception as e:
+                            print(f'Error in retrieving query permission for query {query_id}: {e}')
             return queryPerm
 
         except Exception as e:
-            print(f'error in retrieving query permission: {e}')
+            print(f'Error in retrieving query permission: {e}')
+            raise e
 
+
+    # this request sometimes fails so we wrap in retry loop
+    def getSingleQueryACL(self, queryId) -> list:
+        RETRY_LIMIT = 3
+        retry_count = 0
+        while retry_count < RETRY_LIMIT:
+            if self.verbose:
+                print(f"[Verbose] Requesting query id {queryId}. retry_count={retry_count}")
+            resQPerm = requests.get(f"{self.workspace_url}/api/2.0/preview/sql/permissions/queries/{queryId}", headers=self.headers)
+            if resQPerm.status_code != 200:
+                retry_count += 1
+                continue
+            try:
+                resQPermJson = resQPerm.json()
+                aclList = resQPermJson['access_control_list']
+                query_acl = []
+                if len(aclList) > 0:
+                    for acl in aclList:
+                        try:
+                            if acl['group_name'] in self.groupL:
+                                query_acl = aclList
+                                break
+                        except KeyError:
+                            continue
+                return query_acl
+            except KeyError:
+                continue
+        print(f"ERROR: Retry limit of {RETRY_LIMIT} exceeded requesting query id {queryId}")
+        return []  # if retry limit exceeded, return empty list
             
     def getAlertsACL(self)-> dict:
         try:
@@ -1002,33 +1027,38 @@ class GroupMigration:
         self.clusterPolicyPerm = self.getAllClusterPolicyACL()
         self.warehousePerm = self.getAllWarehouseACL()
         self.dashboardPerm=self.getAllDashboardACL() # 5 mins
-        
-        #These have yet to be parallelized:;
         self.queryPerm=self.getQueriesACL()
+        
+        print('performing jobs inventory')
+        self.jobPerm=self.getJobACL() #33 mins
+
+        print('performing folders and notebook inventory')
+        self.folderPerm, self.notebookPerm=self.getFoldersNotebookACL()
+
+        #These have yet to be parallelized:
         print('performing alerts inventory')
         self.alertPerm=self.getAlertsACL()
         print('performing instance pools inventory')
         self.instancePoolPerm=self.getPoolACL()
-        print('performing jobs inventory')
-        self.jobPerm=self.getJobACL() #33 mins
+        
+        if self.checkTableACL==True:
+          print('performing Tabel ACL object inventory')
+          self.dataObjectsPerm=self.getDataObjectsACL()
+
+        
+        #These have yet to be parallelized:
         print('performing experiments inventory')
         self.expPerm=self.getExperimentACL()
         print('performing registered models inventory')
         self.modelPerm=self.getModelACL()
         print('performing DLT inventory')
         self.dltPerm=self.getDLTACL()
-        print('performing folders and notebook inventory')
-        self.folderPerm, self.notebookPerm=self.getFoldersNotebookACL()
         print('performing repos inventory')
         self.repoPerm=self.getRepoACL()
         print('performing token inventory')
         self.tokenPerm=self.getTokenACL()
         print('performing secret scope inventory')
         self.secretScopePerm=self.getSecretScoppeACL()
-        if self.checkTableACL==True:
-          print('performing Tabel ACL object inventory')
-          self.dataObjectsPerm=self.getDataObjectsACL()
-
       except Exception as e:
         print(f" Error creating group inventory, {e}")
     
