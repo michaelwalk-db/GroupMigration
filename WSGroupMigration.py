@@ -302,23 +302,33 @@ class GroupMigration:
         except Exception as e:
             print(f'Error in retrieving cluster policy permission: {e}')
 
-    def getWarehouseACL(self)-> dict:
+    def getSingleWarehouseACL(self, warehouseId):
+        if self.verbose:
+            print(f'[Verbose] Getting warehouse permissions for warehouse {warehouseId}')
+        resWPerm=requests.get(f"{self.workspace_url}/api/2.0/preview/permissions/sql/warehouses/{warehouseId}", headers=self.headers)
+        if resWPerm.status_code==404:
+            print(f'Error: warehouse ACL not enabled for the warehouse: {warehouseId}')
+            return None
+        resWPermJson=resWPerm.json()            
+        aclList=self.getACL(resWPermJson['access_control_list'])                   
+        if len(aclList)==0:
+            return None
+        return (warehouseId, aclList)
+
+    def getAllWarehouseACL(self)-> dict:
         print('Performing warehouse inventory ...')
         try:
             resW=requests.get(f"{self.workspace_url}/api/2.0/sql/warehouses", headers=self.headers)
             resWJson=resW.json()
             warehousePerm={}
             if(len(resWJson)==0):return {}
-            for c in resWJson['warehouses']:
-                warehouseId=c['id']
-                resWPerm=requests.get(f"{self.workspace_url}/api/2.0/preview/permissions/sql/warehouses/{warehouseId}", headers=self.headers)
-                if resWPerm.status_code==404:
-                    print(f'feature not enabled for this tier')
-                    continue
-                resWPermJson=resWPerm.json()            
-                aclList=self.getACL(resWPermJson['access_control_list'])                   
-                if len(aclList)==0:continue
-                warehousePerm[warehouseId]=aclList               
+            print(f"Scanning permissions of {len(resWJson['warehouses'])} warehouses.")
+            with concurrent.futures.ThreadPoolExecutor(max_workers=self.numThreads) as executor:
+                future_to_warehouse = [executor.submit(self.getSingleWarehouseACL, w['id']) for w in resWJson['warehouses']]
+                for future in concurrent.futures.as_completed(future_to_warehouse):
+                    result = future.result()
+                    if result is not None:
+                        warehousePerm[result[0]] = result[1]
             return warehousePerm
         except Exception as e:
             print(f'error in retrieving warehouse permission: {e}')
@@ -959,7 +969,7 @@ class GroupMigration:
         
         self.clusterPerm = self.getAllClustersACL()
         self.clusterPolicyPerm = self.getAllClusterPolicyACL()
-        self.warehousePerm = self.getWarehouseACL()
+        self.warehousePerm = self.getAllWarehouseACL()
         self.dashboardPerm=self.getDashboardACL() # 5 mins
         print('performing queries inventory')
         self.queryPerm=self.getQueriesACL()
