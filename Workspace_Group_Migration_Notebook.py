@@ -77,13 +77,13 @@ groupL=['analyst', 'dataengineer']
 #Find this in the account console
 account_id="ACCOUNT-ID"
 
-#Pull from your browser URL bar. Should start with "https://" and end with ".com"
+#Pull from your browser URL bar. Should start with "https://" and end with ".com" or ".net"
 workspace_url='https://DOMAIN'
 
 #Personal Access Token. Create one in "User Settings"
 token='TOKEN'
 
-#Should the migration Check the ACL on tables/views as well? If the workspace has freshly been migrated to UC this step might not be needed
+#Should the migration Check the ACL on tables/views as well?
 checkTableACL=False
 
 #What cloud provider? Acceptable values are "AWS" or anything other value.
