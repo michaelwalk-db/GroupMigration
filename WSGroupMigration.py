@@ -356,7 +356,7 @@ class GroupMigration:
                         try:
                             result = future.result()
                             if len(result) > 0:
-                                dashboardPerm[dashboard_id] = result[1]
+                                dashboardPerm[dashboard_id] = result
                         except Exception as e:
                             print(f'Error in retrieving dashboard permission for dashboard {dashboard_id}: {e}')
             return dashboardPerm
@@ -416,7 +416,7 @@ class GroupMigration:
                         try:
                             result = future.result()
                             if len(result) > 0:
-                                queryPerm[query_id] = result[1]
+                                queryPerm[query_id] = result
                         except Exception as e:
                             print(f'Error in retrieving query permission for query {query_id}: {e}')
             return queryPerm
