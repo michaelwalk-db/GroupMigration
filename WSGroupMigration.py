@@ -4,10 +4,12 @@ import json, math
 from pyspark.sql.functions import lit,col,column
 from functools import reduce
 from pyspark.sql import DataFrame, session
+import concurrent.futures
 
 class GroupMigration:
 
-    def __init__(self, groupL : list, cloud : str, account_id : str, workspace_url : str, pat : str, spark : session.SparkSession, userName : str, checkTableACL : False, autoGenerateList : bool = False):
+    def __init__(self, groupL : list, cloud : str, account_id : str, workspace_url : str, pat : str, spark : session.SparkSession, userName : str, checkTableACL : False, 
+                 numThreads : int = 32, autoGenerateList : bool = False, verbose : bool = False):
         self.groupL=groupL
         self.cloud=cloud    
         self.workspace_url = workspace_url.rstrip("/")
@@ -45,6 +47,8 @@ class GroupMigration:
         self.spark=spark
         self.userName=userName
         self.checkTableACL=checkTableACL
+        self.verbose = verbose
+        self.numThreads = numThreads
         
         #Check if we should automatically generate list, and do it immediately.
         #Implementers Note: Could change this section to a lazy calculation by setting groupL to nil or some sentinel value and adding checks before use.
@@ -145,6 +149,7 @@ class GroupMigration:
             resJson=res.json()
             #print(groupList)
 
+            #Iterate over workspace groups, extracting useful info to vars above
             for e in resJson['Resources']:
                 if not e['displayName'] in groupFilterKeeplist:
                     continue
@@ -196,7 +201,7 @@ class GroupMigration:
         except Exception as e:
             print(f'error in retrieving group objects : {e}')
         
-
+    #getACL[n] family of functions extract the ACL from the converted json response into a standard format, filtering by groupL
     def getACL(self, acls:dict)->list:
         aclList=[]
         for acl in acls:
@@ -207,6 +212,7 @@ class GroupMigration:
                 continue
         aclList=[acl for acl in aclList if acl[0] in self.groupL]
         return aclList
+    
     def getACL3(self, acls:dict)->list:
         aclList=[]
         for acl in acls:
@@ -216,6 +222,7 @@ class GroupMigration:
                 continue
         aclList=[acl for acl in aclList if acl[0] in self.groupL]
         return aclList
+    
     def getACL2(self, acls:dict)->list:
         aclList=[]
         for acl in acls:
@@ -230,28 +237,40 @@ class GroupMigration:
           if acl[0] in self.groupL:
             return aclList
         return {}
-    def getClusterACL(self)-> dict:
-        try:
+    
+    def getSingleClusterACL(self, clusterId):
+        if self.verbose:
+            print(f'[Verbose] Getting cluster permissions for cluster {clusterId}')
+        resCPerm=requests.get(f"{self.workspace_url}/api/2.0/preview/permissions/clusters/{clusterId}", headers=self.headers)
+        if resCPerm.status_code==404:
+            print(f'Error: cluster ACL not enabled for the cluster: {clusterId}')
+            return None
+        resCPermJson=resCPerm.json()
+        aclList=self.getACL(resCPermJson['access_control_list'])
+        if len(aclList)==0:
+            return None
+        return (clusterId, aclList)
 
+    def getAllClustersACL(self)-> dict:
+        print('Performing cluster inventory...')
+        try:
             resC=requests.get(f"{self.workspace_url}/api/2.0/clusters/list", headers=self.headers)
             resCJson=resC.json()
             clusterPerm={}
             if(len(resCJson)==0):return {}
-            for c in resCJson['clusters']:
-                clusterId=c['cluster_id']
-                resCPerm=requests.get(f"{self.workspace_url}/api/2.0/preview/permissions/clusters/{clusterId}", headers=self.headers)
-                if resCPerm.status_code==404:
-                    print(f'cluster ACL not enabled for the cluster: {clusterId}')
-                    continue
-                resCPermJson=resCPerm.json()            
-                aclList=self.getACL(resCPermJson['access_control_list'])
-                if len(aclList)==0:continue
-                clusterPerm[clusterId]=aclList                
-            return clusterPerm    
+            print(f"Scanning permissions of {len(resCJson['clusters'])} clusters.")
+            with concurrent.futures.ThreadPoolExecutor(max_workers=self.numThreads) as executor:
+                future_to_cluster = [executor.submit(self.getSingleClusterACL, c['cluster_id']) for c in resCJson['clusters']]
+                for future in concurrent.futures.as_completed(future_to_cluster):
+                    result = future.result()
+                    if result is not None:
+                        clusterPerm[result[0]] = result[1]
+            return clusterPerm
         except Exception as e:
             print(f'error in retrieving cluster permission: {e}')
-
+            
     def getClusterPolicyACL(self)-> dict:
+        print('Performing cluster policy inventory ...')
         try:
             resCP=requests.get(f"{self.workspace_url}/api/2.0/policies/clusters/list", headers=self.headers)
             resCPJson=resCP.json()
@@ -274,6 +293,7 @@ class GroupMigration:
             print(f'error in retrieving cluster policy permission: {e}')
 
     def getWarehouseACL(self)-> dict:
+        print('Performing warehouse inventory ...')
         try:
             resW=requests.get(f"{self.workspace_url}/api/2.0/sql/warehouses", headers=self.headers)
             resWJson=resW.json()
@@ -294,6 +314,7 @@ class GroupMigration:
             print(f'error in retrieving warehouse permission: {e}')
 
     def getDashboardACL(self)-> dict:
+        print('Performing dashboard inventory ...')
         try:
             resD=requests.get(f"{self.workspace_url}/api/2.0/preview/sql/dashboards", headers=self.headers)
             resDJson=resD.json()
@@ -925,13 +946,11 @@ class GroupMigration:
         if self.cloud=="AWS":
           print('performing password inventory')
           self.passwordPerm= self.getPasswordACL()
-        print('performing cluster inventory')
-        self.clusterPerm=self.getClusterACL()
-        print('performing cluster policy inventory')
+        
+        self.clusterPerm=self.getAllClustersACL()
+
         self.clusterPolicyPerm=self.getClusterPolicyACL()
-        print('performing warehouse inventory')
         self.warehousePerm=self.getWarehouseACL()
-        print('performing dashboard inventory')
         self.dashboardPerm=self.getDashboardACL() # 5 mins
         print('performing queries inventory')
         self.queryPerm=self.getQueriesACL()
