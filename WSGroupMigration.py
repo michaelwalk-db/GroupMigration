@@ -332,42 +332,70 @@ class GroupMigration:
             return warehousePerm
         except Exception as e:
             print(f'error in retrieving warehouse permission: {e}')
-
-    def getDashboardACL(self)-> dict:
+       
+    def getAllDashboardACL(self, verbose=False) -> dict:
         print('Performing dashboard inventory ...')
         try:
-            resD=requests.get(f"{self.workspace_url}/api/2.0/preview/sql/dashboards", headers=self.headers)
-            resDJson=resD.json()
-            pages=math.ceil(resDJson['count']/resDJson['page_size'])
-            
-            dashboardPerm={}
-            #print(str(pages))
-            for pg in range(1,pages+1):
-                #print(str(pg))
-                resD=requests.get(f"{self.workspace_url}/api/2.0/preview/sql/dashboards?page={str(pg)}", headers=self.headers)
-                resDJson=resD.json()            
-                for c in resDJson['results']:
-                    dashboardId=c['id']
-                    resDPerm=requests.get(f"{self.workspace_url}/api/2.0/preview/sql/permissions/dashboards/{dashboardId}", headers=self.headers)
-                    if resDPerm.status_code==404:
-                        print(f'feature not enabled for this tier')
-                        continue
-                    resDPermJson=resDPerm.json() 
-                    aclList=resDPermJson['access_control_list']       
-                    if len(aclList)==0:continue
-                    for acl in aclList:
-                      try:
-                        if acl['group_name'] in self.groupL:
-                          dashboardPerm[dashboardId]=aclList  
-                          break
-                      except KeyError:
-                        continue              
+            resD = requests.get(f"{self.workspace_url}/api/2.0/preview/sql/dashboards", headers=self.headers)
+            resDJson = resD.json()
+            pages = math.ceil(resDJson['count'] / resDJson['page_size'])
+
+            dashboardPerm = {}
+            for pg in range(1, pages + 1):
+                if self.verbose:
+                    print(f"[Verbose] Requesting dashboard page {pg}...")
+                resD = requests.get(f"{self.workspace_url}/api/2.0/preview/sql/dashboards?page={str(pg)}", headers=self.headers)
+                resDJson = resD.json()
+                results = resDJson['results']
+                with concurrent.futures.ThreadPoolExecutor(max_workers=self.numThreads) as executor:
+                    future_dashboard_perms = {executor.submit(self.getSingleDashboardACL, dashboard['id']): dashboard['id'] for dashboard in results}
+                    for future in concurrent.futures.as_completed(future_dashboard_perms):
+                        dashboard_id = future_dashboard_perms[future]
+                        try:
+                            result = future.result()
+                            if len(result) > 0:
+                                dashboardPerm[dashboard_id] = result[1]
+                        except Exception as e:
+                            print(f'Error in retrieving dashboard permission for dashboard {dashboard_id}: {e}')
             return dashboardPerm
 
         except Exception as e:
-            print(f'error in retrieving dashboard permission: {e}')
+            print(f'Error in retrieving dashboard permission: {e}')
             raise e
+
+
+    #this request sometimes fails so we wrap in retry loop
+    def getSingleDashboardACL(self, dashboardId) -> list:
+        RETRY_LIMIT = 3
+        retry_count = 0
+        while retry_count < RETRY_LIMIT:
+            if self.verbose:
+                print(f"[Verbose] Requesting dashboard id {dashboardId}. retry_count={retry_count}")
+            resDPerm = requests.get(f"{self.workspace_url}/api/2.0/preview/sql/permissions/dashboards/{dashboardId}", headers=self.headers)
+            if resDPerm.status_code != 200:
+                retry_count += 1
+                continue
+            try:
+                resDPermJson = resDPerm.json()
+                aclList = resDPermJson['access_control_list']
+                dashboard_acl = []
+                if len(aclList) > 0:
+                    for acl in aclList:
+                        try:
+                            if acl['group_name'] in self.groupL:
+                                dashboard_acl = aclList
+                                break
+                        except KeyError:
+                            continue
+                return dashboard_acl
+            except KeyError:
+                continue
+        print(f"ERROR: Retry limit of {RETRY_LIMIT} exceeded requesting dashboard id {dashboardId}")
+        return []  # if retry limit exceeded, return empty list
+    
     def getQueriesACL(self)-> dict:
+        print('performing queries inventory')
+
         try:
             resQ=requests.get(f"{self.workspace_url}/api/2.0/preview/sql/queries", headers=self.headers)
             resQJson=resQ.json()
@@ -398,6 +426,8 @@ class GroupMigration:
 
         except Exception as e:
             print(f'error in retrieving query permission: {e}')
+
+            
     def getAlertsACL(self)-> dict:
         try:
             resA=requests.get(f"{self.workspace_url}/api/2.0/preview/sql/alerts", headers=self.headers)
@@ -967,11 +997,13 @@ class GroupMigration:
           print('performing password inventory')
           self.passwordPerm= self.getPasswordACL()
         
+        #These are parallel
         self.clusterPerm = self.getAllClustersACL()
         self.clusterPolicyPerm = self.getAllClusterPolicyACL()
         self.warehousePerm = self.getAllWarehouseACL()
-        self.dashboardPerm=self.getDashboardACL() # 5 mins
-        print('performing queries inventory')
+        self.dashboardPerm=self.getAllDashboardACL() # 5 mins
+        
+        #These have yet to be parallelized:;
         self.queryPerm=self.getQueriesACL()
         print('performing alerts inventory')
         self.alertPerm=self.getAlertsACL()
