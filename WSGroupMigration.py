@@ -268,29 +268,39 @@ class GroupMigration:
             return clusterPerm
         except Exception as e:
             print(f'error in retrieving cluster permission: {e}')
-            
-    def getClusterPolicyACL(self)-> dict:
-        print('Performing cluster policy inventory ...')
+
+    def getSingleClusterPolicyACL(self, policyId):
+        if self.verbose:
+            print(f'[Verbose] Getting policy permissions for {policyId}')
+        resCPPerm=requests.get(f"{self.workspace_url}/api/2.0/preview/permissions/cluster-policies/{policyId}", headers=self.headers)
+        if resCPPerm.status_code==404:
+            print(f'Error: cluster policy feature is not enabled for policy: {policyId}')
+            return None
+        resCPPermJson=resCPPerm.json()
+        aclList=self.getACL(resCPPermJson['access_control_list'])
+        if len(aclList)==0:
+            return None
+        return (policyId, aclList)
+
+    def getAllClusterPolicyACL(self)-> dict:
+        print('Performing cluster policy inventory...')
         try:
             resCP=requests.get(f"{self.workspace_url}/api/2.0/policies/clusters/list", headers=self.headers)
             resCPJson=resCP.json()
             if resCPJson['total_count']==0:
                 print('No cluster policies defined.')
                 return {}
+            print(f"Scanning permissions of {len(resCPJson['policies'])} cluster policies.")
             clusterPolicyPerm={}
-            for c in resCPJson['policies']:
-                policyid=c['policy_id']
-                resCPPerm=requests.get(f"{self.workspace_url}/api/2.0/preview/permissions/cluster-policies/{policyid}", headers=self.headers)
-                if resCPPerm.status_code==404:
-                    print(f'cluster policy feature is not enabled for this tier.')
-                    continue
-                resCPPermJson=resCPPerm.json()            
-                aclList=self.getACL(resCPPermJson['access_control_list'])
-                if len(aclList)==0:continue
-                clusterPolicyPerm[policyid]=aclList                
+            with concurrent.futures.ThreadPoolExecutor(max_workers=self.numThreads) as executor:
+                future_to_cluster = [executor.submit(self.getSingleClusterPolicyACL, c['policy_id']) for c in resCPJson['policies']]
+                for future in concurrent.futures.as_completed(future_to_cluster):
+                    result = future.result()
+                    if result is not None:
+                        clusterPolicyPerm[result[0]] = result[1]
             return clusterPolicyPerm
         except Exception as e:
-            print(f'error in retrieving cluster policy permission: {e}')
+            print(f'Error in retrieving cluster policy permission: {e}')
 
     def getWarehouseACL(self)-> dict:
         print('Performing warehouse inventory ...')
@@ -947,10 +957,9 @@ class GroupMigration:
           print('performing password inventory')
           self.passwordPerm= self.getPasswordACL()
         
-        self.clusterPerm=self.getAllClustersACL()
-
-        self.clusterPolicyPerm=self.getClusterPolicyACL()
-        self.warehousePerm=self.getWarehouseACL()
+        self.clusterPerm = self.getAllClustersACL()
+        self.clusterPolicyPerm = self.getAllClusterPolicyACL()
+        self.warehousePerm = self.getWarehouseACL()
         self.dashboardPerm=self.getDashboardACL() # 5 mins
         print('performing queries inventory')
         self.queryPerm=self.getQueriesACL()
