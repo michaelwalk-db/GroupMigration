@@ -19,7 +19,7 @@ class GroupMigration:
         self.headers={'Authorization': 'Bearer %s' % self.token}
         self.groupIdDict={} #map: group id => group name
         self.groupNameDict={} #map: group name => group id
-        self.accountGroups={}
+        self.accountGroups_lower={}
         self.groupMembers={} #map: group id => list[tuple[member name, memberid]]
         self.groupEntitlements={}
         self.groupWSGIdDict={} #map : temp group id => temp group name
@@ -943,8 +943,8 @@ class GroupMigration:
                 entitlementList=[]
                 if level=="Workspace":
                   groupId=self.groupWSGNameDict["db-temp-"+self.groupIdDict[group_id]]
-                else:
-                  groupId=self.accountGroups[self.groupIdDict[group_id][8:]]
+                else:  #Account, aka temp group, must discard db-temp- (8 chars)
+                  groupId=self.accountGroups_lower[self.groupIdDict[group_id][8:].casefold()]
                 #print(groupId)
                 for e in etl:
                     entitlementList.append({"value":e})
@@ -964,8 +964,8 @@ class GroupMigration:
                 roleList=[]
                 if level=="Workspace":
                   groupId=self.groupWSGNameDict["db-temp-"+self.groupIdDict[group_id]]
-                else:
-                  groupId=self.accountGroups[self.groupIdDict[group_id][8:]]
+                else:  #Account, aka temp group, must discard db-temp- (8 chars)
+                  groupId=self.accountGroups_lower[self.groupIdDict[group_id][8:].casefold()]
                 for e in roles:
                     roleList.append({"value":e})
                 instanceProfileRoles = {
@@ -1384,9 +1384,9 @@ class GroupMigration:
       try:
         res=requests.get(f"{self.workspace_url}/api/2.0/account/scim/v2/Groups", headers=self.headers)
         for grp in res.json()['Resources']:
-          self.accountGroups[grp['displayName']]=grp['id']
+          self.accountGroups_lower[grp['displayName'].casefold()]=grp['id']
         for g in self.WorkspaceGroupNames:
-          if g not in self.accountGroups:
+          if g.casefold() not in self.accountGroups_lower:
             print(f"group {g} is not present in account level, please add correct group and try again")
             return 1
         return 0
@@ -1402,8 +1402,8 @@ class GroupMigration:
         data={
                   "permissions": ["USER"]
               }
-        for g in self.WorkspaceGroupNames:     
-          res=requests.put(f"{self.workspace_url}/api/2.0/preview/permissionassignments/principals/{self.accountGroups[g]}", headers=self.headers, data=json.dumps(data))
+        for g in self.WorkspaceGroupNames:
+          res=requests.put(f"{self.workspace_url}/api/2.0/preview/permissionassignments/principals/{self.accountGroups_lower[g.casefold()]}", headers=self.headers, data=json.dumps(data))
         self.applyGroupPermission("Account")
 
       except Exception as e:
