@@ -73,6 +73,7 @@ class GroupMigration:
                     
     def findMigrationEligibleGroups(self):
         print("Begin automatic generation of all migration eligible groups.")
+        #Get all workspace-local groups
         try:
             print("Executing request to list workspace groups")
             res=requests.get(f"{self.workspace_url}/api/2.0/preview/scim/v2/Groups", headers=self.headers)
@@ -86,28 +87,31 @@ class GroupMigration:
             #Prune special groups.
             prune_groups = ["admins", "users"]
             allWsLocalGroups = [g for g in allWsLocalGroups if g not in prune_groups]
-
+            allWsLocalGroups_lower = [x.casefold() for x in allWsLocalGroups]
             allWsLocalGroups.sort()
             print(f"\nFound {len(allWsLocalGroups)} workspace local groups. Listing (alphabetical order): \n" + "\n".join(f"{i+1}. {name}" for i, name in enumerate(allWsLocalGroups)))
 
         except Exception as e:
             print(f'ERROR in retrieving workspace group list: {e}') 
             raise
+
+        #Now match against account groups.
         try:
             print("\nExecuting request to list account groups")
             res=requests.get(f"{self.workspace_url}/api/2.0/account/scim/v2/Groups", headers=self.headers)
             if res.status_code != 200:
                 raise Exception(f'Bad status code. Expected: 200. Got: {res.status_code}')
             resJson2=res.json()
-            allAccountGroups = [r['displayName'] for r in resJson2['Resources']]
-            allAccountGroups.sort()
+            allAccountGroups_lower = [r['displayName'].casefold() for r in resJson2['Resources']]
+            allAccountGroups_lower.sort()
 
             # Get set intersection of both lists
-            migration_eligible = list(set(allWsLocalGroups) & set(allAccountGroups))
+            migration_eligible_lower = list(set(allWsLocalGroups_lower) & set(allAccountGroups_lower))
+            migration_eligible = [wsl for wsl in allWsLocalGroups if wsl.casefold() in migration_eligible_lower]
             migration_eligible.sort()
 
             # Get list of items in allWsLocalGroups that are not in allAccountGroups
-            not_in_account_groups = [group for group in allWsLocalGroups if group not in allAccountGroups]
+            not_in_account_groups = [group for group in allWsLocalGroups if group.casefold() not in allAccountGroups_lower]
             not_in_account_groups.sort()
 
             # Print count and membership of not_in_account_groups
@@ -152,9 +156,12 @@ class GroupMigration:
             resJson=res.json()
             #print(groupList)
 
+            #normalize case
+            groupFilterKeeplist = [x.casefold() for x in groupFilterKeeplist]
+
             #Iterate over workspace groups, extracting useful info to vars above
             for e in resJson['Resources']:
-                if not e['displayName'] in groupFilterKeeplist:
+                if not e['displayName'].casefold() in groupFilterKeeplist:
                     continue
 
                 groupIdDict[e['id']]=e['displayName']
