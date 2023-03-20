@@ -1140,6 +1140,7 @@ class GroupMigration:
     def performInventory(self, mode : str, force : bool = False):
         #check if all this should already be cached
       if self.lastInventoryRun == mode and not force:
+          self.setGroupListForMode(mode)
           print(f'Skipping inventory for mode = {mode} since already performed.')
           return
 
