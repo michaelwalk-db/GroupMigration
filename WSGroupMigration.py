@@ -1046,8 +1046,6 @@ class GroupMigration:
       aclFinalList = []
       try:
         for db in dbs:
-          databaseName = ""
-
           databaseName = db.databaseName
           #databaseName = 'default'
 
@@ -1057,7 +1055,7 @@ class GroupMigration:
                          .withColumn("ObjectType", lit("DATABASE"))
                          .filter(col("ActionType")!="OWN")
              )
-          aclList=df.collect()
+          aclList+=df.collect()
           tables = self.runVerboseSql("show tables in {}".format(databaseName)).filter(col("isTemporary") == False)
           for table in tables.collect():
             try:
