@@ -92,8 +92,11 @@ cloud='AWS'
 #Your databricks user email.
 userName='USER-EMAIL'
 
+#Number of threads to issue Databricks API requests with. If you get a lot of errors during the inventory, lower this value.
+numThreads = 30
+
 #Initialize GroupMigration Class with values supplied above
-gm = GroupMigration( groupL = groupL , cloud=cloud , account_id = account_id, workspace_url = workspace_url, pat=token, spark=spark, userName=userName, checkTableACL = checkTableACL, autoGenerateList = autoGenerateList)
+gm = GroupMigration( groupL = groupL , cloud=cloud , account_id = account_id, workspace_url = workspace_url, pat=token, spark=spark, userName=userName, checkTableACL = checkTableACL, autoGenerateList = autoGenerateList, numThreads=numThreads)
 
 # COMMAND ----------
 
@@ -104,7 +107,7 @@ gm = GroupMigration( groupL = groupL , cloud=cloud , account_id = account_id, wo
 
 # COMMAND ----------
 
-gm.dryRun()
+gm.dryRun("Workspace")
 
 # COMMAND ----------
 
@@ -118,6 +121,19 @@ gm.dryRun()
 # COMMAND ----------
 
 gm.createBackupGroup()
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC #### Step 3 Verification: Verify backup groups
+# MAGIC This steps runs the permission inventory, tracking the new temp groups
+# MAGIC - Verify the temp group permissions are as seen in the initial dry run
+# MAGIC - check randomly if all the ACL are applied correctly
+# MAGIC - there should be one temp group for every workspace group (Ex: db-temp-analysts and analysts with same ACLs)
+
+# COMMAND ----------
+
+gm.dryRun("Account")
 
 # COMMAND ----------
 

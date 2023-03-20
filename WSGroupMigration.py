@@ -370,8 +370,11 @@ class GroupMigration:
     #this request sometimes fails so we wrap in retry loop
     def getSingleDashboardACL(self, dashboardId) -> list:
         RETRY_LIMIT = 3
+        RETRY_DELAY = 500 / 1000 #500 ms
         retry_count = 0
         while retry_count < RETRY_LIMIT:
+            if retry_count > 0:
+                time.sleep(RETRY_DELAY)
             if self.verbose:
                 print(f"[Verbose] Requesting dashboard id {dashboardId}. retry_count={retry_count}")
             resDPerm = requests.get(f"{self.workspace_url}/api/2.0/preview/sql/permissions/dashboards/{dashboardId}", headers=self.headers)
@@ -392,6 +395,7 @@ class GroupMigration:
                             continue
                 return dashboard_acl
             except KeyError:
+                retry_count += 1
                 continue
         print(f"ERROR: Retry limit of {RETRY_LIMIT} exceeded requesting dashboard id {dashboardId}")
         return []  # if retry limit exceeded, return empty list
@@ -430,8 +434,11 @@ class GroupMigration:
     # this request sometimes fails so we wrap in retry loop
     def getSingleQueryACL(self, queryId) -> list:
         RETRY_LIMIT = 3
+        RETRY_DELAY = 500 / 1000 #500 ms
         retry_count = 0
         while retry_count < RETRY_LIMIT:
+            if retry_count > 0:
+                time.sleep(RETRY_DELAY)
             if self.verbose:
                 print(f"[Verbose] Requesting query id {queryId}. retry_count={retry_count}")
             resQPerm = requests.get(f"{self.workspace_url}/api/2.0/preview/sql/permissions/queries/{queryId}", headers=self.headers)
@@ -452,6 +459,7 @@ class GroupMigration:
                             continue
                 return query_acl
             except KeyError:
+                retry_count += 1
                 continue
         print(f"ERROR: Retry limit of {RETRY_LIMIT} exceeded requesting query id {queryId}")
         return []  # if retry limit exceeded, return empty list
@@ -1128,8 +1136,7 @@ class GroupMigration:
           print(f'Skipping inventory for mode = {mode} since already performed.')
           return
 
-
-      print(f'Performing inventory of workspace object permissions filtering results by group list for mode: {mode}.')
+      print(f'Performing inventory of workspace object permissions. Filtering results by group list for mode: {mode}.')
       try:
         self.setGroupListForMode(mode)
         if self.cloud=="AWS":
@@ -1171,14 +1178,17 @@ class GroupMigration:
       except Exception as e:
         print(f" Error creating group inventory, {e}")
     
-    def printInventory(self):
+    def printInventory(self, printMembers : bool = False):
         print('Displaying Inventory Results -- ACLs of selected groups:')
         print('Group List:')
         print("{:<20} {:<10}".format('Group ID', 'Group Name'))
         for key, value in self.groupIdDict.items():print("{:<20} {:<10}".format(key, value))
-        print('Group Members:')
-        print("{:<20} {:<100}".format('Group ID', 'Group Member'))
-        for key, value in self.groupMembers.items():print("{:<20} {:<100}".format(key, str(value)))
+
+        if printMembers:
+            print('Group Members:')
+            print("{:<20} {:<100}".format('Group ID', 'Group Member'))
+            for key, value in self.groupMembers.items():print("{:<20} {:<100}".format(key, str(value)))
+
         print('Group Entitlements:')
         print("{:<20} {:<100}".format('Group ID', 'Group Entitlements'))
         for key, value in self.groupEntitlements.items():print("{:<20} {:<100}".format(key, str(value)))
@@ -1241,9 +1251,9 @@ class GroupMigration:
           print('TableACL  Permission:')
           for item in self.dataObjectsPerm:print(item)
 
-    def dryRun(self):
-        self.performInventory('Workspace')        
-        self.printInventory()
+    def dryRun(self, mode : str = 'Workspace', printMembers : bool = False):
+        self.performInventory(mode)
+        self.printInventory(printMembers)
 
     def applyGroupPermission(self, level:str ):
       try:
