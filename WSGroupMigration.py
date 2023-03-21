@@ -172,7 +172,7 @@ class GroupMigration:
                     for mem in e['members']:
                         members.append(list([mem['display'],mem['value']]))
                 except KeyError:
-                    continue
+                    pass
                 groupMembers[e['id']]=members
 
                 #Get entitlements
@@ -181,9 +181,8 @@ class GroupMigration:
                     for ent in e['entitlements']:
                         entms.append(ent['value'])
                 except:
-                    continue
-                # if len(entms)==0:
-                #     continue
+                    pass
+
                 groupEntitlements[e['id']]=entms
                 
                 #Get Roles (AWS only)
@@ -1044,13 +1043,22 @@ class GroupMigration:
 
       aclList = []
       aclFinalList = []
+      
       try:
+        df=(self.spark.sql("SHOW GRANT ON CATALOG")
+                         .filter(col("ObjectType")=="CATALOG$")
+                         .withColumn("ObjectKey", lit(""))
+                         .withColumn("ObjectType", lit("CATALOG"))
+                         .filter(col("ActionType")!="OWN")
+           )
+        aclList=df.collect()
         for db in dbs:
           databaseName = db.databaseName
           #databaseName = 'default'
 
           # append the database df to the list
           df=(self.runVerboseSql("SHOW GRANT ON DATABASE {}".format(databaseName))
+                         .filter(col("ObjectType")=="DATABASE")
                          .withColumn("ObjectKey", lit(databaseName))
                          .withColumn("ObjectType", lit("DATABASE"))
                          .filter(col("ActionType")!="OWN")
@@ -1062,6 +1070,7 @@ class GroupMigration:
               #print(table)
               #if table.tableName=='testtable': continue
               dft=(self.runVerboseSql("show grant on table {}.`{}`".format(table.database, table.tableName))
+                             .filter(col("ObjectType")=="TABLE")
                              .withColumn("ObjectKey", lit("`" + table.database + "`.`" + table.tableName + "`"))
                              .withColumn("ObjectType", lit("TABLE"))
                             )
@@ -1075,6 +1084,7 @@ class GroupMigration:
             try:
               
               dft=(self.runVerboseSql("show grant on view {}.`{}`".format(view.namespace, view.viewName))
+                             .filter(col("ObjectType")=="TABLE")
                              .withColumn("ObjectKey", lit("`" + view.namespace + "`.`" + view.viewName + "`"))
                              .withColumn("ObjectType", lit("VIEW"))
                             )
@@ -1087,7 +1097,8 @@ class GroupMigration:
           for function in functions.collect():
             try:
               
-              dft=(self.runVerboseSql("show grant on function `{}`".format( function.function))
+              dft=(self.runVerboseSql("show grant on function {}".format( function.function))
+                             .filter(col("ObjectType")=="FUNCTION")
                              .withColumn("ObjectKey", lit("`" + function.function + "`"))
                              .withColumn("ObjectType", lit("FUNCTION"))
                             )
