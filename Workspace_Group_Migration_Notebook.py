@@ -71,7 +71,7 @@
 from WSGroupMigration import GroupMigration
 
 #If autoGenerateList=True then groupL will be ignored and all eliglbe groups will be migrated.
-autoGenerateList = True
+autoGenerateList = False
 groupL=['analyst', 'dataengineer']
 
 #Find this in the account console
